@@ -13,6 +13,13 @@ public class WorkerProperties {
 
     private String links;
 
+    /*
+     * Directory account.
+     *
+     * application.properties:
+     *
+     * worker.accounts=/home/vortexis/RegisV8_Fix/accounts
+     */
     private String accounts;
 
     private int maxConcurrency = 50;
@@ -60,7 +67,7 @@ public class WorkerProperties {
 
 
     // ============================================================
-    // ACCOUNTS DIRECTORY
+    // ACCOUNTS
     // ============================================================
 
     public String getAccounts() {
@@ -69,6 +76,24 @@ public class WorkerProperties {
 
     public void setAccounts(String accounts) {
         this.accounts = accounts;
+    }
+
+
+    /*
+     * COMPATIBILITY:
+     *
+     * AccountService dan AccountFileService
+     * Anda masih menggunakan getAccountsDir().
+     *
+     * Jangan ubah kedua service tersebut.
+     */
+
+    public String getAccountsDir() {
+        return accounts;
+    }
+
+    public void setAccountsDir(String accountsDir) {
+        this.accounts = accountsDir;
     }
 
 
@@ -86,7 +111,7 @@ public class WorkerProperties {
 
 
     // ============================================================
-    // MAX TIMEOUT
+    // MAX TIMEOUT MINUTES
     // ============================================================
 
     public int getMaxTimeoutMinutes() {

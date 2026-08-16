@@ -6,6 +6,8 @@ import com.example.regis.dto.AccountResponse;
 import com.example.regis.dto.BulkAccountRequest;
 import com.example.regis.model.Account;
 
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
 import java.nio.charset.StandardCharsets;
@@ -45,6 +47,7 @@ public class AccountService {
                     Map.entry("ALADIN", "130"),
                     Map.entry("ARTHA GRAHA", "103"),
                     Map.entry("ARTOS", "104"),
+                    Map.entry("JAGO", "122"),
                     Map.entry("BCA BLU", "123"),
                     Map.entry("BCA SYARIAH", "47"),
                     Map.entry("BJB", "105"),
@@ -53,7 +56,6 @@ public class AccountService {
                     Map.entry("DANAMON", "55"),
                     Map.entry("DBS", "108"),
                     Map.entry("HSBC", "110"),
-                    Map.entry("JAGO", "122"),
                     Map.entry("BANK JAKARTA", "109"),
                     Map.entry("JATIM", "111"),
                     Map.entry("MASPION", "42"),
@@ -79,7 +81,9 @@ public class AccountService {
             );
 
     private static final DateTimeFormatter FILE_DATE_FORMAT =
-            DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss");
+            DateTimeFormatter.ofPattern(
+                    "yyyyMMdd_HHmmss"
+            );
 
     public AccountService(
             WorkerProperties properties
@@ -87,11 +91,16 @@ public class AccountService {
         this.properties = properties;
     }
 
+    // ============================================================
+    // ADD SINGLE ACCOUNT
+    // ============================================================
+
     public AccountResponse add(
             AccountRequest request
     ) {
 
-        Account account = createAccount(request);
+        Account account =
+                createAccount(request);
 
         saveAccount(account);
 
@@ -105,6 +114,10 @@ public class AccountService {
         );
     }
 
+    // ============================================================
+    // ADD BULK ACCOUNT
+    // ============================================================
+
     public List<AccountResponse> addBulk(
             BulkAccountRequest request
     ) {
@@ -114,6 +127,7 @@ public class AccountService {
                 request.accounts() == null ||
                 request.accounts().isEmpty()
         ) {
+
             throw new IllegalArgumentException(
                     "Account list cannot be empty"
             );
@@ -126,6 +140,7 @@ public class AccountService {
                 AccountRequest item :
                 request.accounts()
         ) {
+
             accounts.add(
                     createAccount(item)
             );
@@ -149,11 +164,16 @@ public class AccountService {
                 .toList();
     }
 
+    // ============================================================
+    // CREATE ACCOUNT
+    // ============================================================
+
     private Account createAccount(
             AccountRequest request
     ) {
 
         if (request == null) {
+
             throw new IllegalArgumentException(
                     "Account request cannot be null"
             );
@@ -163,6 +183,7 @@ public class AccountService {
                 request.userId() == null ||
                 request.userId().isBlank()
         ) {
+
             throw new IllegalArgumentException(
                     "User ID cannot be empty"
             );
@@ -172,6 +193,7 @@ public class AccountService {
                 request.password() == null ||
                 request.password().isBlank()
         ) {
+
             throw new IllegalArgumentException(
                     "Password cannot be empty"
             );
@@ -181,6 +203,7 @@ public class AccountService {
                 request.fullName() == null ||
                 request.fullName().isBlank()
         ) {
+
             throw new IllegalArgumentException(
                     "Full name cannot be empty"
             );
@@ -190,6 +213,7 @@ public class AccountService {
                 request.bankType() == null ||
                 request.bankType().isBlank()
         ) {
+
             throw new IllegalArgumentException(
                     "Bank type cannot be empty"
             );
@@ -199,6 +223,7 @@ public class AccountService {
                 request.accountNumber() == null ||
                 request.accountNumber().isBlank()
         ) {
+
             throw new IllegalArgumentException(
                     "Account number cannot be empty"
             );
@@ -213,6 +238,7 @@ public class AccountService {
                 BANK_CODES.get(bankType);
 
         if (bankCode == null) {
+
             throw new IllegalArgumentException(
                     "Unsupported bank type: "
                             + bankType
@@ -229,6 +255,10 @@ public class AccountService {
         );
     }
 
+    // ============================================================
+    // SAVE SINGLE
+    // ============================================================
+
     private Path saveAccount(
             Account account
     ) {
@@ -238,6 +268,10 @@ public class AccountService {
         );
     }
 
+    // ============================================================
+    // SAVE ACCOUNTS
+    // ============================================================
+
     private synchronized Path saveAccounts(
             List<Account> accounts
     ) {
@@ -246,12 +280,19 @@ public class AccountService {
                 accounts == null ||
                 accounts.isEmpty()
         ) {
+
             throw new IllegalArgumentException(
                     "Account list cannot be empty"
             );
         }
 
-        String userId =
+        /*
+         * ========================================================
+         * VALIDATE SAME TARGET USER
+         * ========================================================
+         */
+
+        String accountUserId =
                 accounts.get(0)
                         .getUserId()
                         .trim();
@@ -262,16 +303,24 @@ public class AccountService {
         ) {
 
             if (
-                    !userId.equals(
-                            account.getUserId().trim()
+                    !accountUserId.equals(
+                            account.getUserId()
+                                    .trim()
                     )
             ) {
+
                 throw new IllegalArgumentException(
                         "All accounts in one import "
-                                + "must belong to the same user"
+                                + "must belong to the same account user"
                 );
             }
         }
+
+        /*
+         * ========================================================
+         * GET ACCOUNT DIRECTORY
+         * ========================================================
+         */
 
         String accountsDir =
                 properties.getAccounts();
@@ -280,6 +329,7 @@ public class AccountService {
                 accountsDir == null ||
                 accountsDir.isBlank()
         ) {
+
             throw new IllegalStateException(
                     "worker.accounts is not configured"
             );
@@ -294,11 +344,38 @@ public class AccountService {
                     directory
             );
 
-            String safeUserId =
-                    userId.replaceAll(
-                            "[^a-zA-Z0-9_-]",
-                            "_"
-                    );
+            /*
+             * ====================================================
+             * IMPORTANT
+             * ====================================================
+             *
+             * Nama file menggunakan USERNAME APLIKASI
+             * yang sedang login.
+             *
+             * BUKAN request.userId().
+             *
+             * Contoh:
+             *
+             * authenticated user = regis1
+             *
+             * file:
+             *
+             * user_regis1_20260816_030526_xxxxxxxx.txt
+             *
+             * Sedangkan isi file tetap menggunakan:
+             *
+             * accountUserId = toniva00238
+             */
+
+            String ownerUsername =
+                    getAuthenticatedUsername();
+
+            String safeOwnerUsername =
+                    ownerUsername
+                            .replaceAll(
+                                    "[^a-zA-Z0-9_-]",
+                                    "_"
+                            );
 
             String timestamp =
                     LocalDateTime.now()
@@ -316,7 +393,7 @@ public class AccountService {
 
             String fileName =
                     "user_"
-                            + safeUserId
+                            + safeOwnerUsername
                             + "_"
                             + timestamp
                             + "_"
@@ -348,14 +425,69 @@ public class AccountService {
                             + file.toAbsolutePath()
             );
 
+            System.out.println(
+                    "[ACCOUNT FILE OWNER] "
+                            + ownerUsername
+            );
+
+            System.out.println(
+                    "[ACCOUNT TARGET USER] "
+                            + accountUserId
+            );
+
             return file;
 
-        } catch (Exception e) {
+        } catch (
+                IllegalStateException e
+        ) {
+
+            throw e;
+
+        } catch (
+                Exception e
+        ) {
 
             throw new IllegalStateException(
                     "Failed to create account file",
                     e
             );
         }
+    }
+
+    // ============================================================
+    // AUTHENTICATED USERNAME
+    // ============================================================
+
+    private String getAuthenticatedUsername() {
+
+        Authentication authentication =
+                SecurityContextHolder
+                        .getContext()
+                        .getAuthentication();
+
+        if (
+                authentication == null ||
+                !authentication.isAuthenticated()
+        ) {
+
+            throw new IllegalStateException(
+                    "User is not authenticated"
+            );
+        }
+
+        String username =
+                authentication.getName();
+
+        if (
+                username == null ||
+                username.isBlank()
+        ) {
+
+            throw new IllegalStateException(
+                    "Authenticated username is missing"
+            );
+        }
+
+        return username.trim();
     }
 }

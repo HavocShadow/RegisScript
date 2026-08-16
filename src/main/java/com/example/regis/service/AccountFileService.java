@@ -6,7 +6,6 @@ import org.springframework.stereotype.Service;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-
 import java.util.Comparator;
 import java.util.stream.Stream;
 
@@ -21,20 +20,16 @@ public class AccountFileService {
         this.properties = properties;
     }
 
-    /*
-     * ============================================================
-     * GET LATEST ACCOUNT FILE
-     * ============================================================
+    /**
+     * Mencari file account TERBARU milik user aplikasi.
      *
-     * Mencari berdasarkan USERNAME.
+     * Contoh username:
      *
-     * Contoh:
-     *
-     * username = toniva00238
+     * regis1
      *
      * akan mencari:
      *
-     * user_toniva00238_*.txt
+     * user_regis1_*.txt
      */
     public Path getLatestAccountFile(
             String username
@@ -68,7 +63,7 @@ public class AccountFileService {
 
             throw new IllegalStateException(
                     "Account directory does not exist: "
-                            + directory
+                            + directory.toAbsolutePath()
             );
         }
 
@@ -76,15 +71,16 @@ public class AccountFileService {
 
             throw new IllegalStateException(
                     "Account path is not a directory: "
-                            + directory
+                            + directory.toAbsolutePath()
             );
         }
 
         String safeUsername =
-                username.replaceAll(
-                        "[^a-zA-Z0-9_-]",
-                        "_"
-                );
+                username.trim()
+                        .replaceAll(
+                                "[^a-zA-Z0-9_-]",
+                                "_"
+                        );
 
         String prefix =
                 "user_"
@@ -123,6 +119,7 @@ public class AccountFileService {
                     .max(
                             Comparator.comparing(
                                     path -> {
+
                                         try {
 
                                             return Files
@@ -144,6 +141,9 @@ public class AccountFileService {
                                     new IllegalStateException(
                                             "No account file found for user: "
                                                     + username
+                                                    + " in "
+                                                    + directory
+                                                            .toAbsolutePath()
                                     )
                     );
 

@@ -282,17 +282,8 @@ public class AccountService {
          */
         Path basePath =
                 Path.of(
-                        properties.getAccounts()
+                        properties.getAccountsDir()
                 );
-
-        Path directory =
-                basePath.getParent();
-
-        if (directory == null) {
-
-            directory =
-                    Path.of(".");
-        }
 
         try {
 

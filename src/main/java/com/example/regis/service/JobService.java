@@ -4,7 +4,7 @@ import com.example.regis.config.WorkerProperties;
 import com.example.regis.dto.CreateJobRequest;
 import com.example.regis.dto.JobResponse;
 import com.example.regis.model.Job;
-import com.example.regis.model.JobStatus; 
+import com.example.regis.model.JobStatus;
 import com.example.regis.model.User;
 import com.example.regis.repository.UserRepository;
 
@@ -12,6 +12,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.Comparator;
@@ -19,6 +20,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 
 @Service
 public class JobService {
@@ -65,9 +67,21 @@ public class JobService {
             CreateJobRequest request
     ) {
 
+        if (request == null) {
+
+            throw new IllegalArgumentException(
+                    "Job request cannot be null"
+            );
+        }
+
+
         User user =
                 getAuthenticatedUser();
 
+
+        // ========================================================
+        // MODE
+        // ========================================================
 
         String mode =
                 request.mode() == null ||
@@ -95,6 +109,10 @@ public class JobService {
         }
 
 
+        // ========================================================
+        // CONCURRENCY
+        // ========================================================
+
         int concurrency =
                 request.concurrency() == null
 
@@ -103,30 +121,36 @@ public class JobService {
                         : request.concurrency();
 
 
+        if (concurrency < 1) {
+
+            throw new IllegalArgumentException(
+                    "Concurrency must be at least 1"
+            );
+        }
+
+
+        if (
+                concurrency >
+                        properties.getMaxConcurrency()
+        ) {
+
+            throw new IllegalArgumentException(
+                    "Concurrency exceeds limit: "
+                            + properties.getMaxConcurrency()
+            );
+        }
+
+
+        // ========================================================
+        // TIMEOUT
+        // ========================================================
+
         int timeout =
                 request.timeout() == null
 
                         ? 15
 
                         : request.timeout();
-
-
-        if(request.timeout() != properties.getMaxConcurrency()){
-                throw new IllegalArgumentException(
-                        "Timeout exceeds limit: "
-                                + properties.getMaxConcurrency()
-                                + " concurrent(s)"
-                );
-        }
-
-
-        if(request.timeout() != properties.getMaxTimeoutMinutes()){
-                throw new IllegalArgumentException(
-                        "Concurrency exceeds limit: "
-                                + properties.getMaxTimeoutMinutes() 
-                                + " minute(s)"
-                );
-        }
 
 
         if (timeout < 1) {
@@ -137,44 +161,40 @@ public class JobService {
         }
 
 
-        /*
-         * CATATAN:
-         *
-         * Jika maxTimeoutSeconds benar-benar seconds,
-         * perbandingan harus dikonversi.
-         */
-
         if (
-                timeout * 60 >
-                        properties.getMaxTimeoutSeconds()
+                timeout >
+                        properties.getMaxTimeoutMinutes()
         ) {
 
             throw new IllegalArgumentException(
                     "Timeout exceeds limit: "
-                            + (
-                            properties
-                                    .getMaxTimeoutSeconds()
-                            / 60
-                    )
+                            + properties.getMaxTimeoutMinutes()
                             + " minute(s)"
             );
         }
 
 
+        // ========================================================
+        // OWNER
+        // ========================================================
+
         String ownerUserId =
-                user.getId().toString();
+                user.getId()
+                        .toString();
 
 
-        /*
-         * ========================================================
-         * SNAPSHOT ACCOUNT FILE
-         * ========================================================
-         *
-         * File dipilih SEKARANG.
-         *
-         * Setelah masuk ke Job, worker tidak akan
-         * mencari file lagi berdasarkan userId.
-         */
+        // ========================================================
+        // ACCOUNT FILE SNAPSHOT
+        // ========================================================
+        //
+        // Ambil file ACCOUNT TERBARU milik user.
+        //
+        // File ini kemudian disimpan langsung
+        // ke dalam Job.
+        //
+        // Worker TIDAK akan mencari file lagi
+        // berdasarkan userId.
+        //
 
         Path accountFile =
                 accountFileService
@@ -184,8 +204,17 @@ public class JobService {
 
 
         if (
-                accountFile == null ||
-                !java.nio.file.Files.exists(accountFile)
+                accountFile == null
+        ) {
+
+            throw new IllegalStateException(
+                    "No account file found for user"
+            );
+        }
+
+
+        if (
+                !Files.exists(accountFile)
         ) {
 
             throw new IllegalStateException(
@@ -195,32 +224,79 @@ public class JobService {
         }
 
 
+        if (
+                !Files.isRegularFile(accountFile)
+        ) {
+
+            throw new IllegalStateException(
+                    "Account path is not a regular file: "
+                            + accountFile
+            );
+        }
+
+
+        try {
+
+            if (
+                    Files.size(accountFile) == 0
+            ) {
+
+                throw new IllegalStateException(
+                        "Account file is empty: "
+                                + accountFile
+                );
+            }
+
+        } catch (
+                java.io.IOException e
+        ) {
+
+            throw new IllegalStateException(
+                    "Failed to inspect account file: "
+                            + accountFile,
+                    e
+            );
+        }
+
+
+        // ========================================================
+        // ABSOLUTE PATH
+        // ========================================================
+
+        String accountFilePath =
+                accountFile
+                        .toAbsolutePath()
+                        .normalize()
+                        .toString();
+
+
+        // ========================================================
+        // JOB ID
+        // ========================================================
+
         String jobId =
                 UUID.randomUUID()
                         .toString();
 
 
-        /*
-         * ========================================================
-         * CREATE JOB
-         * ========================================================
-         */
+        // ========================================================
+        // CREATE JOB
+        // ========================================================
 
         Job job =
                 new Job(
                         jobId,
                         ownerUserId,
-                        accountFile.toAbsolutePath()
-                                .toString(),
+                        accountFilePath,
                         mode,
                         concurrency,
                         timeout
                 );
 
 
-        /*
-         * Simpan job terlebih dahulu.
-         */
+        // ========================================================
+        // STORE JOB
+        // ========================================================
 
         jobs.put(
                 jobId,
@@ -228,17 +304,21 @@ public class JobService {
         );
 
 
-        /*
-         * Jalankan worker.
-         */
+        // ========================================================
+        // START PYTHON WORKER
+        // ========================================================
 
         worker.execute(
                 job
         );
 
 
-        return get(
-                jobId
+        // ========================================================
+        // RESPONSE
+        // ========================================================
+
+        return toResponse(
+                job
         );
     }
 
@@ -274,7 +354,8 @@ public class JobService {
 
 
         String ownerUserId =
-                user.getId().toString();
+                user.getId()
+                        .toString();
 
 
         return jobs.values()
@@ -318,7 +399,8 @@ public class JobService {
 
 
         String ownerUserId =
-                user.getId().toString();
+                user.getId()
+                        .toString();
 
 
         Job job =
@@ -428,7 +510,7 @@ public class JobService {
                 if (
                         !process.waitFor(
                                 3,
-                                java.util.concurrent.TimeUnit.SECONDS
+                                TimeUnit.SECONDS
                         )
                 ) {
 
@@ -478,7 +560,8 @@ public class JobService {
 
 
         String ownerUserId =
-                user.getId().toString();
+                user.getId()
+                        .toString();
 
 
         if (

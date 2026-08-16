@@ -8,17 +8,21 @@ import org.springframework.stereotype.Component;
 public class WorkerProperties {
 
     private String python;
+
     private String script;
+
     private String links;
-    private String accountsDir;
+
+    private String accounts;
 
     private int maxConcurrency = 50;
+
     private int maxTimeoutMinutes = 30;
 
 
-    // =========================================================
+    // ============================================================
     // PYTHON
-    // =========================================================
+    // ============================================================
 
     public String getPython() {
         return python;
@@ -29,9 +33,9 @@ public class WorkerProperties {
     }
 
 
-    // =========================================================
+    // ============================================================
     // SCRIPT
-    // =========================================================
+    // ============================================================
 
     public String getScript() {
         return script;
@@ -42,9 +46,9 @@ public class WorkerProperties {
     }
 
 
-    // =========================================================
+    // ============================================================
     // LINKS
-    // =========================================================
+    // ============================================================
 
     public String getLinks() {
         return links;
@@ -55,22 +59,22 @@ public class WorkerProperties {
     }
 
 
-    // =========================================================
-    // ACCOUNTS
-    // =========================================================
+    // ============================================================
+    // ACCOUNTS DIRECTORY
+    // ============================================================
 
-    public String getAccountsDir() {
-        return accountsDir;
+    public String getAccounts() {
+        return accounts;
     }
 
-    public void setAccountsDir(String accountsDir) {
-        this.accountsDir = accountsDir;
+    public void setAccounts(String accounts) {
+        this.accounts = accounts;
     }
 
 
-    // =========================================================
+    // ============================================================
     // MAX CONCURRENCY
-    // =========================================================
+    // ============================================================
 
     public int getMaxConcurrency() {
         return maxConcurrency;
@@ -81,9 +85,9 @@ public class WorkerProperties {
     }
 
 
-    // =========================================================
+    // ============================================================
     // MAX TIMEOUT
-    // =========================================================
+    // ============================================================
 
     public int getMaxTimeoutMinutes() {
         return maxTimeoutMinutes;

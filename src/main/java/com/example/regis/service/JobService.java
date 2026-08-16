@@ -20,7 +20,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
 
 @Service
 public class JobService {
@@ -35,6 +34,7 @@ public class JobService {
 
     private final Map<String, Job> jobs =
             new ConcurrentHashMap<>();
+
 
     public JobService(
             WorkerProperties properties,
@@ -52,6 +52,7 @@ public class JobService {
         this.accountFileService = accountFileService;
     }
 
+
     // ============================================================
     // CREATE JOB
     // ============================================================
@@ -60,11 +61,16 @@ public class JobService {
             CreateJobRequest request
     ) {
 
+        if (request == null) {
+            throw new IllegalArgumentException(
+                    "Job request cannot be null"
+            );
+        }
+
+
         User user =
                 getAuthenticatedUser();
 
-        String username =
-                getAuthenticatedUsername();
 
         String mode =
                 request.mode() == null ||
@@ -75,6 +81,7 @@ public class JobService {
                         : request.mode()
                                 .trim()
                                 .toLowerCase();
+
 
         if (
                 !Set.of(
@@ -90,30 +97,26 @@ public class JobService {
             );
         }
 
+
+        // ========================================================
+        // CONCURRENCY
+        // ========================================================
+
         int concurrency =
                 request.concurrency() == null
+
                         ? 10
+
                         : request.concurrency();
 
-        int timeout =
-                request.timeout() == null
-                        ? 15
-                        : request.timeout();
 
-        /*
-         * ========================================================
-         * CONCURRENCY VALIDATION
-         * ========================================================
-         */
-
-        if (
-                concurrency < 1
-        ) {
+        if (concurrency < 1) {
 
             throw new IllegalArgumentException(
                     "Concurrency must be at least 1"
             );
         }
+
 
         if (
                 concurrency >
@@ -126,20 +129,26 @@ public class JobService {
             );
         }
 
-        /*
-         * ========================================================
-         * TIMEOUT VALIDATION
-         * ========================================================
-         */
 
-        if (
-                timeout < 1
-        ) {
+        // ========================================================
+        // TIMEOUT
+        // ========================================================
+
+        int timeout =
+                request.timeout() == null
+
+                        ? 15
+
+                        : request.timeout();
+
+
+        if (timeout < 1) {
 
             throw new IllegalArgumentException(
                     "Timeout must be at least 1 minute"
             );
         }
+
 
         if (
                 timeout >
@@ -153,54 +162,53 @@ public class JobService {
             );
         }
 
-        if (
-                timeout * 60 >
-                        properties.getMaxTimeoutSeconds()
-        ) {
 
-            throw new IllegalArgumentException(
-                    "Timeout exceeds limit: "
-                            + (
-                            properties
-                                    .getMaxTimeoutSeconds()
-                                    / 60
-                    )
-                            + " minute(s)"
-            );
-        }
-
-        /*
-         * ========================================================
-         * OWNER
-         * ========================================================
-         *
-         * Owner disimpan sebagai database ID.
-         *
-         * File account dicari berdasarkan USERNAME.
-         */
+        // ========================================================
+        // OWNER
+        // ========================================================
 
         String ownerUserId =
                 user.getId().toString();
 
-        /*
-         * ========================================================
-         * GET LATEST ACCOUNT FILE
-         * ========================================================
-         *
-         * PENTING:
-         *
-         * Jangan gunakan ownerUserId di sini.
-         *
-         * ownerUserId:
-         *     1
-         *
-         * username:
-         *     regis1
-         *
-         * AccountFileService mencari:
-         *
-         *     user_regis1_*.txt
-         */
+
+        // ========================================================
+        // ACCOUNT FILE
+        // ========================================================
+        //
+        // IMPORTANT:
+        //
+        // AccountFileService sekarang menerima USERNAME,
+        // bukan database ID.
+        //
+        // Sebelumnya kita mengirim:
+        //
+        //     user.getId().toString()
+        //
+        // sehingga yang dicari:
+        //
+        //     user_1_*.txt
+        //
+        // padahal file yang dibuat adalah:
+        //
+        //     user_toniva00238_*.txt
+        //
+        // Karena itu gunakan username.
+        // ========================================================
+
+        String username =
+                user.getUsername();
+
+
+        if (
+                username == null ||
+                username.isBlank()
+        ) {
+
+            throw new IllegalStateException(
+                    "Authenticated username is missing"
+            );
+        }
+
 
         Path accountFile =
                 accountFileService
@@ -208,17 +216,9 @@ public class JobService {
                                 username
                         );
 
-        if (
-                accountFile == null
-        ) {
-
-            throw new IllegalStateException(
-                    "Account file is null for user: "
-                            + username
-            );
-        }
 
         if (
+                accountFile == null ||
                 !Files.exists(accountFile)
         ) {
 
@@ -228,74 +228,52 @@ public class JobService {
             );
         }
 
-        if (
-                !Files.isRegularFile(accountFile)
-        ) {
 
-            throw new IllegalStateException(
-                    "Account file is not a regular file: "
-                            + accountFile
-            );
-        }
-
-        /*
-         * ========================================================
-         * CREATE JOB
-         * ========================================================
-         */
+        // ========================================================
+        // CREATE JOB
+        // ========================================================
 
         String jobId =
                 UUID.randomUUID()
                         .toString();
 
+
         Job job =
                 new Job(
                         jobId,
                         ownerUserId,
-                        accountFile
-                                .toAbsolutePath()
+                        accountFile.toAbsolutePath()
                                 .toString(),
                         mode,
                         concurrency,
                         timeout
                 );
 
-        /*
-         * ========================================================
-         * STORE JOB
-         * ========================================================
-         */
+
+        // ========================================================
+        // SAVE JOB
+        // ========================================================
 
         jobs.put(
                 jobId,
                 job
         );
 
-        /*
-         * ========================================================
-         * EXECUTE WORKER
-         * ========================================================
-         */
 
-        try {
+        // ========================================================
+        // START WORKER
+        // ========================================================
 
-            worker.execute(
-                    job
-            );
+        worker.execute(
+                job
+        );
 
-        } catch (RuntimeException e) {
-
-            jobs.remove(
-                    jobId
-            );
-
-            throw e;
-        }
 
         return get(
                 jobId
         );
     }
+
 
     // ============================================================
     // GET
@@ -310,10 +288,12 @@ public class JobService {
                         jobId
                 );
 
+
         return toResponse(
                 job
         );
     }
+
 
     // ============================================================
     // CURRENT
@@ -324,26 +304,30 @@ public class JobService {
         User user =
                 getAuthenticatedUser();
 
+
         String ownerUserId =
                 user.getId().toString();
 
+
         return jobs.values()
                 .stream()
+
                 .filter(
                         job ->
                                 job.getOwnerUserId()
-                                        .equals(
-                                                ownerUserId
-                                        )
+                                        .equals(ownerUserId)
                 )
+
                 .max(
                         Comparator.comparing(
                                 Job::getCreatedAt
                         )
                 )
+
                 .map(
                         this::toResponse
                 )
+
                 .orElseThrow(
                         () ->
                                 new IllegalArgumentException(
@@ -351,6 +335,7 @@ public class JobService {
                                 )
                 );
     }
+
 
     // ============================================================
     // CANCEL CURRENT
@@ -363,24 +348,27 @@ public class JobService {
         User user =
                 getAuthenticatedUser();
 
+
         String ownerUserId =
                 user.getId().toString();
+
 
         Job job =
                 jobs.values()
                         .stream()
+
                         .filter(
                                 item ->
                                         item.getOwnerUserId()
-                                                .equals(
-                                                        ownerUserId
-                                                )
+                                                .equals(ownerUserId)
                         )
+
                         .max(
                                 Comparator.comparing(
                                         Job::getCreatedAt
                                 )
                         )
+
                         .orElseThrow(
                                 () ->
                                         new IllegalArgumentException(
@@ -388,11 +376,13 @@ public class JobService {
                                         )
                         );
 
+
         cancelJob(
                 job,
                 reason
         );
     }
+
 
     // ============================================================
     // CANCEL
@@ -407,11 +397,13 @@ public class JobService {
                         jobId
                 );
 
+
         cancelJob(
                 job,
                 "Cancelled by user"
         );
     }
+
 
     // ============================================================
     // INTERNAL CANCEL
@@ -425,6 +417,7 @@ public class JobService {
         JobStatus status =
                 job.getStatus();
 
+
         if (
                 status == JobStatus.COMPLETED ||
                 status == JobStatus.FAILED ||
@@ -434,19 +427,25 @@ public class JobService {
             return;
         }
 
+
         job.setStatus(
                 JobStatus.CANCELLED
         );
 
+
         job.setMessage(
                 reason == null ||
                 reason.isBlank()
+
                         ? "Job cancelled"
+
                         : reason
         );
 
+
         Process process =
                 job.getProcess();
+
 
         if (
                 process != null &&
@@ -455,12 +454,13 @@ public class JobService {
 
             process.destroy();
 
+
             try {
 
                 if (
                         !process.waitFor(
                                 3,
-                                TimeUnit.SECONDS
+                                java.util.concurrent.TimeUnit.SECONDS
                         )
                 ) {
 
@@ -478,10 +478,12 @@ public class JobService {
             }
         }
 
+
         job.setCompletedAt(
                 Instant.now()
         );
     }
+
 
     // ============================================================
     // REQUIRE OWNED JOB
@@ -492,9 +494,8 @@ public class JobService {
     ) {
 
         Job job =
-                jobs.get(
-                        jobId
-                );
+                jobs.get(jobId);
+
 
         if (job == null) {
 
@@ -503,17 +504,18 @@ public class JobService {
             );
         }
 
+
         User user =
                 getAuthenticatedUser();
+
 
         String ownerUserId =
                 user.getId().toString();
 
+
         if (
                 !job.getOwnerUserId()
-                        .equals(
-                                ownerUserId
-                        )
+                        .equals(ownerUserId)
         ) {
 
             throw new IllegalArgumentException(
@@ -521,8 +523,10 @@ public class JobService {
             );
         }
 
+
         return job;
     }
+
 
     // ============================================================
     // AUTHENTICATED USER
@@ -535,6 +539,7 @@ public class JobService {
                         .getContext()
                         .getAuthentication();
 
+
         if (
                 authentication == null ||
                 !authentication.isAuthenticated()
@@ -545,8 +550,10 @@ public class JobService {
             );
         }
 
+
         String username =
                 authentication.getName();
+
 
         if (
                 username == null ||
@@ -558,10 +565,9 @@ public class JobService {
             );
         }
 
+
         return userRepository
-                .findByUsername(
-                        username
-                )
+                .findByUsername(username)
                 .orElseThrow(
                         () ->
                                 new IllegalStateException(
@@ -570,42 +576,6 @@ public class JobService {
                 );
     }
 
-    // ============================================================
-    // AUTHENTICATED USERNAME
-    // ============================================================
-
-    private String getAuthenticatedUsername() {
-
-        Authentication authentication =
-                SecurityContextHolder
-                        .getContext()
-                        .getAuthentication();
-
-        if (
-                authentication == null ||
-                !authentication.isAuthenticated()
-        ) {
-
-            throw new IllegalStateException(
-                    "User is not authenticated"
-            );
-        }
-
-        String username =
-                authentication.getName();
-
-        if (
-                username == null ||
-                username.isBlank()
-        ) {
-
-            throw new IllegalStateException(
-                    "Authenticated username is missing"
-            );
-        }
-
-        return username.trim();
-    }
 
     // ============================================================
     // RESPONSE

@@ -4,7 +4,7 @@ import com.example.regis.config.WorkerProperties;
 import com.example.regis.dto.CreateJobRequest;
 import com.example.regis.dto.JobResponse;
 import com.example.regis.model.Job;
-import com.example.regis.model.JobStatus;
+import com.example.regis.model.JobStatus; 
 import com.example.regis.model.User;
 import com.example.regis.repository.UserRepository;
 
@@ -111,23 +111,21 @@ public class JobService {
                         : request.timeout();
 
 
-        if (concurrency < 1) {
-
-            throw new IllegalArgumentException(
-                    "Concurrency must be at least 1"
-            );
+        if(request.timeout() != properties.getMaxConcurrency()){
+                throw new IllegalArgumentException(
+                        "Timeout exceeds limit: "
+                                + properties.getMaxConcurrency()
+                                + " concurrent(s)"
+                );
         }
 
 
-        if (
-                concurrency >
-                        properties.getMaxConcurrency()
-        ) {
-
-            throw new IllegalArgumentException(
-                    "Concurrency exceeds limit: "
-                            + properties.getMaxConcurrency()
-            );
+        if(request.timeout() != properties.getMaxTimeoutMinutes()){
+                throw new IllegalArgumentException(
+                        "Concurrency exceeds limit: "
+                                + properties.getMaxTimeoutMinutes() 
+                                + " minute(s)"
+                );
         }
 
 

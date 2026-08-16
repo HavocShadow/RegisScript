@@ -15,13 +15,21 @@ public class WorkerProperties {
 
     private String links;
 
+    /*
+     * Maksimum jumlah worker Python
+     * yang dapat berjalan bersamaan.
+     */
     private int maxConcurrency = 50;
 
     /*
-     * Dalam SECOND.
+     * Timeout dalam MENIT.
      */
-    private int maxTimeoutSeconds = 300;
+    private int maxTimeoutMinutes = 30;
 
+
+    // =========================================================
+    // PYTHON
+    // =========================================================
 
     public String getPython() {
 
@@ -37,6 +45,10 @@ public class WorkerProperties {
     }
 
 
+    // =========================================================
+    // SCRIPT
+    // =========================================================
+
     public String getScript() {
 
         return script;
@@ -50,6 +62,10 @@ public class WorkerProperties {
         this.script = script;
     }
 
+
+    // =========================================================
+    // ACCOUNTS DIRECTORY
+    // =========================================================
 
     public String getAccountsDir() {
 
@@ -65,6 +81,10 @@ public class WorkerProperties {
     }
 
 
+    // =========================================================
+    // LINKS
+    // =========================================================
+
     public String getLinks() {
 
         return links;
@@ -78,6 +98,10 @@ public class WorkerProperties {
         this.links = links;
     }
 
+
+    // =========================================================
+    // MAX CONCURRENCY
+    // =========================================================
 
     public int getMaxConcurrency() {
 
@@ -93,17 +117,20 @@ public class WorkerProperties {
     }
 
 
-    public int getMaxTimeoutSeconds() {
+    // =========================================================
+    // MAX TIMEOUT MINUTES
+    // =========================================================
 
-        return maxTimeoutSeconds;
+    public int getMaxTimeoutMinutes() {
+
+        return maxTimeoutMinutes;
     }
 
 
-    public void setMaxTimeoutSeconds(
-            int maxTimeoutSeconds
+    public void setMaxTimeoutMinutes(
+            int maxTimeoutMinutes
     ) {
 
-        this.maxTimeoutSeconds =
-                maxTimeoutSeconds;
+        this.maxTimeoutMinutes = maxTimeoutMinutes;
     }
 }

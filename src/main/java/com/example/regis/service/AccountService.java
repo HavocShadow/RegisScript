@@ -208,52 +208,78 @@ public class AccountService {
      * ============================
      */
 
+    private void saveAccount(
+            Account account
+    ) {
+
+        saveAccounts(
+                List.of(account)
+        );
+    }
+
+    /*
+     * ============================
+     * SAVE ACCOUNTS
+     * ============================
+     */
+
     private synchronized void saveAccounts(
-                List<Account> accounts
-        ) {
+            List<Account> accounts
+    ) {
 
         if (
                 accounts == null ||
                 accounts.isEmpty()
         ) {
 
-                throw new IllegalArgumentException(
-                        "Account list cannot be empty"
-                );
+            throw new IllegalArgumentException(
+                    "Account list cannot be empty"
+            );
         }
 
+        /*
+         * Ambil userId dari account pertama.
+         *
+         * Untuk bulk import sebaiknya semua
+         * account memang milik user yang sama.
+         */
         String userId =
                 accounts.get(0)
                         .getUserId()
                         .trim();
 
         /*
-        * Pastikan semua account
-        * memiliki userId yang sama.
-        */
+         * Pastikan seluruh account dalam bulk
+         * memiliki userId yang sama.
+         */
         for (Account account : accounts) {
 
-                if (
-                        !userId.equals(
-                                account.getUserId().trim()
-                        )
-                ) {
+            if (
+                    !userId.equals(
+                            account.getUserId().trim()
+                    )
+            ) {
 
                 throw new IllegalArgumentException(
                         "All accounts in one import "
                                 + "must belong to the same user"
                 );
-                }
+            }
         }
 
         /*
-        * worker.accountsDir harus menunjuk
-        * ke DIRECTORY penyimpanan account.
-        *
-        * Contoh:
-        *
-        * worker.accounts-dir=/home/vortexis/Registrar/accounts
-        */
+         * Base directory diambil dari
+         * worker.accounts.
+         *
+         * Contoh:
+         *
+         * worker.accounts=
+         * /home/vortexis/Registrar/accounts/account.txt
+         *
+         * maka directory:
+         *
+         * /home/vortexis/Registrar/accounts
+         */
         String accountsDir =
                 properties.getAccountsDir();
 
@@ -262,9 +288,9 @@ public class AccountService {
                 accountsDir.isBlank()
         ) {
 
-                throw new IllegalStateException(
-                        "worker.accounts-dir is not configured"
-                );
+        throw new IllegalStateException(
+                "worker.accounts-dir is not configured"
+        );
         }
 
         Path directory =
@@ -272,91 +298,95 @@ public class AccountService {
 
         try {
 
-                Files.createDirectories(
-                        directory
-                );
+            Files.createDirectories(
+                    directory
+            );
 
-                /*
-                * Sanitasi userId.
-                */
-                String safeUserId =
-                        userId.replaceAll(
-                                "[^a-zA-Z0-9_-]",
-                                "_"
-                        );
+            /*
+             * Sanitasi userId agar tidak bisa
+             * membuat path aneh.
+             */
+            String safeUserId =
+                    userId.replaceAll(
+                            "[^a-zA-Z0-9_-]",
+                            "_"
+                    );
 
-                /*
-                * Timestamp.
-                */
-                String timestamp =
-                        LocalDateTime.now()
-                                .format(
-                                        FILE_DATE_FORMAT
-                                );
+            /*
+             * Timestamp.
+             */
+            String timestamp =
+                    LocalDateTime.now()
+                            .format(
+                                    FILE_DATE_FORMAT
+                            );
 
-                /*
-                * UUID supaya nama file unik.
-                */
-                String uniqueId =
-                        UUID.randomUUID()
-                                .toString()
-                                .substring(
-                                        0,
-                                        8
-                                );
+            /*
+             * UUID agar nama file selalu unik.
+             */
+            String uniqueId =
+                    UUID.randomUUID()
+                            .toString()
+                            .substring(
+                                    0,
+                                    8
+                            );
 
-                /*
-                * Contoh:
-                *
-                * user_regis1_20260816_014909_a81f23c4.txt
-                */
-                String fileName =
-                        "user_"
-                                + safeUserId
-                                + "_"
-                                + timestamp
-                                + "_"
-                                + uniqueId
-                                + ".txt";
+            /*
+             * Contoh:
+             *
+             * user_regis1_20260815_233001_a81f23c4.txt
+             */
+            String fileName =
+                    "user_"
+                            + safeUserId
+                            + "_"
+                            + timestamp
+                            + "_"
+                            + uniqueId
+                            + ".txt";
 
-                Path file =
-                        directory.resolve(
-                                fileName
-                        );
+            Path file =
+                    directory.resolve(
+                            fileName
+                    );
 
-                /*
-                * Account -> file lines.
-                */
-                List<String> lines =
-                        accounts
-                                .stream()
-                                .map(
-                                        Account::toAccountFileLine
-                                )
-                                .toList();
+            /*
+             * Convert account → lines.
+             */
+            List<String> lines =
+                    accounts
+                            .stream()
+                            .map(
+                                    Account::toAccountFileLine
+                            )
+                            .toList();
 
-                /*
-                * CREATE_NEW:
-                * tidak akan menimpa file existing.
-                */
-                Files.write(
-                        file,
-                        lines,
-                        StandardCharsets.UTF_8,
-                        StandardOpenOption.CREATE_NEW
-                );
+            /*
+             * CREATE_NEW sangat penting.
+             *
+             * Kalau file ternyata sudah ada,
+             * Java akan gagal daripada
+             * menimpa file tersebut.
+             */
+            Files.write(
+                    file,
+                    lines,
+                    StandardCharsets.UTF_8,
+                    StandardOpenOption.CREATE_NEW
+            );
 
-                System.out.println(
-                        "[ACCOUNT FILE CREATED] "
-                                + file.toAbsolutePath()
-                );
+            System.out.println(
+                    "[ACCOUNT FILE CREATED] "
+                            + file.toAbsolutePath()
+            );
 
         } catch (Exception e) {
 
-                throw new IllegalStateException(
-                        "Failed to create account file",
-                        e
-                );
+            throw new IllegalStateException(
+                    "Failed to create account file",
+                    e
+            );
         }
-        }
+    }
 }

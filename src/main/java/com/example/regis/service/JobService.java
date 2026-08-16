@@ -168,10 +168,10 @@ public class JobService {
         Job job =
                 new Job(
                         jobId,
+                        ownerUserId,
                         mode,
                         concurrency,
-                        timeout,
-                        ownerUserId
+                        timeout
                 );
 
 

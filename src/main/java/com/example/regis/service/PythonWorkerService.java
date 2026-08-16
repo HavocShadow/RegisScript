@@ -9,10 +9,15 @@ import org.springframework.stereotype.Service;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+
+import java.nio.file.Files;
 import java.nio.file.Path;
+
 import java.time.Instant;
+
 import java.util.ArrayList;
 import java.util.List;
+
 import java.util.concurrent.TimeUnit;
 
 @Service
@@ -20,12 +25,20 @@ public class PythonWorkerService {
 
     private final WorkerProperties properties;
 
+
     public PythonWorkerService(
             WorkerProperties properties
     ) {
+
         this.properties = properties;
     }
 
+
+    /*
+     * ============================================================
+     * EXECUTE PYTHON WORKER
+     * ============================================================
+     */
     @Async("workerExecutor")
     public void execute(
             Job job
@@ -35,60 +48,189 @@ public class PythonWorkerService {
                 JobStatus.RUNNING
         );
 
+
         job.setStartedAt(
                 Instant.now()
         );
+
 
         job.setMessage(
                 "Starting Python worker"
         );
 
+
+        job.setProgress(
+                0
+        );
+
+
+        Path accountFile =
+                getUserAccountFile(
+                        job.getOwnerUserId()
+                );
+
+
+        /*
+         * Pastikan file account milik user memang ada.
+         */
+        if (!Files.exists(accountFile)) {
+
+            failJob(
+                    job,
+                    "Account file not found",
+                    "Account file does not exist: "
+                            + accountFile
+            );
+
+            return;
+        }
+
+
+        /*
+         * Jangan menjalankan Python jika file kosong.
+         */
+        try {
+
+            if (
+                    Files.size(accountFile) == 0
+            ) {
+
+                failJob(
+                        job,
+                        "Account file is empty",
+                        "No account available for this user"
+                );
+
+                return;
+            }
+
+        } catch (Exception e) {
+
+            failJob(
+                    job,
+                    "Failed to inspect account file",
+                    e.getMessage()
+            );
+
+            return;
+        }
+
+
+        /*
+         * ========================================================
+         * COMMAND
+         * ========================================================
+         *
+         * Contoh hasil:
+         *
+         * python
+         * /home/vortexis/RegisV8_Fix/main.py
+         * --links /.../link.txt
+         * --accounts /.../accounts/17.txt
+         * --mode account-per-link
+         * --concurrency 10
+         * --timeout 15
+         */
         List<String> command =
                 new ArrayList<>();
+
 
         command.add(
                 properties.getPython()
         );
 
+
         command.add(
                 properties.getScript()
         );
 
-        command.add("--links");
-        command.add(properties.getLinks());
 
-        command.add("--accounts");
-        command.add(properties.getAccounts());
+        command.add(
+                "--links"
+        );
 
-        command.add("--mode");
-        command.add(job.getMode());
 
-        command.add("--concurrency");
+        command.add(
+                properties.getLinks()
+        );
+
+
+        command.add(
+                "--accounts"
+        );
+
+
+        /*
+         * PENTING:
+         *
+         * Python sekarang membaca account file
+         * MILIK USER yang membuat job.
+         */
+        command.add(
+                accountFile.toString()
+        );
+
+
+        command.add(
+                "--mode"
+        );
+
+
+        command.add(
+                job.getMode()
+        );
+
+
+        command.add(
+                "--concurrency"
+        );
+
+
         command.add(
                 String.valueOf(
                         job.getConcurrency()
                 )
         );
 
-        command.add("--timeout");
+
+        command.add(
+                "--timeout"
+        );
+
+
         command.add(
                 String.valueOf(
                         job.getTimeout()
                 )
         );
 
+
         Process process = null;
+
 
         try {
 
+            /*
+             * ====================================================
+             * PROCESS BUILDER
+             * ====================================================
+             */
             ProcessBuilder processBuilder =
-                    new ProcessBuilder(command);
+                    new ProcessBuilder(
+                            command
+                    );
 
-            String script =
-                    properties.getScript();
 
+            /*
+             * Working directory:
+             *
+             * /home/vortexis/RegisV8_Fix
+             */
             Path scriptPath =
-                    Path.of(script);
+                    Path.of(
+                            properties.getScript()
+                    );
+
 
             if (scriptPath.getParent() != null) {
 
@@ -99,85 +241,80 @@ public class PythonWorkerService {
                 );
             }
 
-            processBuilder.redirectErrorStream(true);
 
+            /*
+             * Gabungkan stderr + stdout.
+             */
+            processBuilder.redirectErrorStream(
+                    true
+            );
+
+
+            /*
+             * ====================================================
+             * START
+             * ====================================================
+             */
             process =
                     processBuilder.start();
 
-            job.setProcess(process);
 
-            StringBuilder output =
-                    new StringBuilder();
+            job.setProcess(
+                    process
+            );
+
+
+            job.setMessage(
+                    "Python worker started"
+            );
+
 
             /*
-             * Read Python output in a separate thread.
-             * This prevents stdout from blocking the process.
+             * ====================================================
+             * READ PYTHON OUTPUT
+             * ====================================================
+             *
+             * Reader dijalankan secara terpisah supaya
+             * waitFor(timeout) tetap bisa bekerja.
              */
-            Process finalProcess = process;
+            Process finalProcess =
+                    process;
+
 
             Thread outputReader =
-                    new Thread(() -> {
+                    new Thread(
+                            () ->
+                                    readOutput(
+                                            finalProcess,
+                                            job
+                                    )
+                    );
 
-                        try (
-                                BufferedReader reader =
-                                        new BufferedReader(
-                                                new InputStreamReader(
-                                                        finalProcess
-                                                                .getInputStream()
-                                                )
-                                        )
-                        ) {
 
-                            String line;
+            outputReader.setDaemon(
+                    true
+            );
 
-                            while (
-                                    (line =
-                                            reader.readLine())
-                                            != null
-                            ) {
-
-                                System.out.println(
-                                        "[PYTHON "
-                                                + job.getJobId()
-                                                + "] "
-                                                + line
-                                );
-
-                                synchronized (output) {
-
-                                    output
-                                            .append(line)
-                                            .append("\n");
-                                }
-
-                                parseProgress(
-                                        job,
-                                        line
-                                );
-                            }
-
-                        } catch (Exception e) {
-
-                            System.err.println(
-                                    "[PYTHON "
-                                            + job.getJobId()
-                                            + "] "
-                                            + "Output reader error: "
-                                            + e.getMessage()
-                            );
-                        }
-
-                    });
-
-            outputReader.setDaemon(true);
 
             outputReader.start();
 
+
             /*
-             * timeout is interpreted as MINUTES.
+             * ====================================================
+             * TIMEOUT
+             * ====================================================
+             *
+             * timeout dari frontend dianggap MENIT.
+             *
+             * Contoh:
+             *
+             * timeout = 15
+             *
+             * berarti 15 menit.
              */
             long timeoutSeconds =
                     job.getTimeout() * 60L;
+
 
             boolean finished =
                     process.waitFor(
@@ -185,9 +322,16 @@ public class PythonWorkerService {
                             TimeUnit.SECONDS
                     );
 
+
+            /*
+             * ====================================================
+             * TIMEOUT
+             * ====================================================
+             */
             if (!finished) {
 
                 process.destroy();
+
 
                 if (
                         !process.waitFor(
@@ -199,28 +343,51 @@ public class PythonWorkerService {
                     process.destroyForcibly();
                 }
 
-                job.setStatus(
-                        JobStatus.FAILED
-                );
 
-                job.setMessage(
-                        "Python worker timeout"
-                );
+                /*
+                 * Jangan mengubah CANCELLED menjadi FAILED.
+                 */
+                if (
+                        job.getStatus()
+                                != JobStatus.CANCELLED
+                ) {
 
-                job.setError(
-                        "Worker exceeded "
-                                + job.getTimeout()
-                                + " minute(s)"
-                );
+                    failJob(
+                            job,
+                            "Python worker timeout",
+                            "Worker exceeded timeout of "
+                                    + job.getTimeout()
+                                    + " minute(s)"
+                    );
+                }
+
 
                 return;
             }
 
-            /*
-             * Wait briefly for stdout reader to finish.
-             */
-            outputReader.join(2000);
 
+            /*
+             * Tunggu reader selesai membaca output.
+             */
+            try {
+
+                outputReader.join(
+                        3000
+                );
+
+            } catch (
+                    InterruptedException e
+            ) {
+
+                Thread.currentThread()
+                        .interrupt();
+            }
+
+
+            /*
+             * Jika user melakukan cancel
+             * saat process berjalan.
+             */
             if (
                     job.getStatus()
                             == JobStatus.CANCELLED
@@ -229,79 +396,93 @@ public class PythonWorkerService {
                 return;
             }
 
+
             int exitCode =
                     process.exitValue();
 
+
+            /*
+             * ====================================================
+             * SUCCESS
+             * ====================================================
+             */
             if (exitCode == 0) {
 
-                job.setProgress(100);
+                job.setProgress(
+                        100
+                );
+
 
                 job.setStatus(
                         JobStatus.COMPLETED
                 );
 
+
                 job.setMessage(
                         "Python worker completed"
                 );
 
-            } else {
+
+            }
+
+            /*
+             * ====================================================
+             * FAILED
+             * ====================================================
+             */
+            else {
 
                 job.setStatus(
                         JobStatus.FAILED
                 );
+
 
                 job.setMessage(
                         "Python exited with code "
                                 + exitCode
                 );
 
-                synchronized (output) {
+
+                /*
+                 * Output error sebenarnya sudah
+                 * ditangani oleh readOutput().
+                 *
+                 * Kalau Python tidak memberikan output,
+                 * tetap berikan pesan generic.
+                 */
+                if (
+                        job.getError() == null ||
+                        job.getError().isBlank()
+                ) {
 
                     job.setError(
-                            output.toString()
+                            "Python process exited with code "
+                                    + exitCode
                     );
                 }
             }
 
-        } catch (InterruptedException e) {
 
-            Thread.currentThread().interrupt();
+        } catch (
+                Exception e
+        ) {
 
+            /*
+             * Jika process dibatalkan,
+             * jangan overwrite CANCELLED menjadi FAILED.
+             */
             if (
-                    process != null &&
-                    process.isAlive()
+                    job.getStatus()
+                            != JobStatus.CANCELLED
             ) {
 
-                process.destroyForcibly();
+                failJob(
+                        job,
+                        "Failed to execute Python worker",
+                        e.getMessage()
+                );
             }
 
-            job.setStatus(
-                    JobStatus.FAILED
-            );
-
-            job.setMessage(
-                    "Python worker interrupted"
-            );
-
-            job.setError(
-                    e.getMessage()
-            );
-
-        } catch (Exception e) {
-
-            job.setStatus(
-                    JobStatus.FAILED
-            );
-
-            job.setMessage(
-                    "Failed to execute Python worker"
-            );
-
-            job.setError(
-                    e.getClass().getSimpleName()
-                            + ": "
-                            + e.getMessage()
-            );
 
         } finally {
 
@@ -309,17 +490,115 @@ public class PythonWorkerService {
                     Instant.now()
             );
 
-            job.setProcess(null);
+
+            job.setProcess(
+                    null
+            );
         }
     }
 
+
+    /*
+     * ============================================================
+     * READ PYTHON OUTPUT
+     * ============================================================
+     */
+    private void readOutput(
+            Process process,
+            Job job
+    ) {
+
+        try (
+                BufferedReader reader =
+                        new BufferedReader(
+                                new InputStreamReader(
+                                        process.getInputStream()
+                                )
+                        )
+        ) {
+
+            String line;
+
+
+            while (
+                    (
+                            line =
+                                    reader.readLine()
+                    ) != null
+            ) {
+
+                System.out.println(
+                        "[PYTHON "
+                                + job.getJobId()
+                                + "] "
+                                + line
+                );
+
+
+                parseProgress(
+                        job,
+                        line
+                );
+
+
+                /*
+                 * Jika Python gagal,
+                 * simpan output sebagai error.
+                 */
+                if (
+                        line.startsWith(
+                                "ERROR:"
+                        )
+                ) {
+
+                    job.setError(
+                            line.substring(
+                                    6
+                            ).trim()
+                    );
+                }
+            }
+
+
+        } catch (
+                Exception e
+        ) {
+
+            /*
+             * Jangan mengubah CANCELLED menjadi error.
+             */
+            if (
+                    job.getStatus()
+                            != JobStatus.CANCELLED
+            ) {
+
+                job.setError(
+                        e.getMessage()
+                );
+            }
+        }
+    }
+
+
+    /*
+     * ============================================================
+     * PROGRESS PARSER
+     * ============================================================
+     */
     private void parseProgress(
             Job job,
             String line
     ) {
 
+        /*
+         * Format Python:
+         *
+         * PROGRESS:50
+         */
         if (
-                line.startsWith("PROGRESS:")
+                line.startsWith(
+                        "PROGRESS:"
+                )
         ) {
 
             try {
@@ -332,27 +611,30 @@ public class PythonWorkerService {
                                 ).trim()
                         );
 
-                progress =
-                        Math.max(
-                                0,
-                                Math.min(
-                                        100,
-                                        progress
-                                )
-                        );
 
                 job.setProgress(
                         progress
                 );
 
+
             } catch (
                     NumberFormatException ignored
             ) {
+
+                // Ignore invalid progress.
             }
         }
 
+
+        /*
+         * Format Python:
+         *
+         * MESSAGE:Processing account 10
+         */
         if (
-                line.startsWith("MESSAGE:")
+                line.startsWith(
+                        "MESSAGE:"
+                )
         ) {
 
             job.setMessage(
@@ -362,5 +644,70 @@ public class PythonWorkerService {
                     ).trim()
             );
         }
+    }
+
+
+    /*
+     * ============================================================
+     * USER ACCOUNT FILE
+     * ============================================================
+     */
+    private Path getUserAccountFile(
+            String userId
+    ) {
+
+        /*
+         * Proteksi path traversal.
+         */
+        String safeUserId =
+                userId.replaceAll(
+                        "[^a-zA-Z0-9_-]",
+                        "_"
+                );
+
+
+        return Path.of(
+                properties.getAccountsDir(),
+                safeUserId + ".txt"
+        );
+    }
+
+
+    /*
+     * ============================================================
+     * FAIL JOB
+     * ============================================================
+     */
+    private void failJob(
+            Job job,
+            String message,
+            String error
+    ) {
+
+        job.setStatus(
+                JobStatus.FAILED
+        );
+
+
+        job.setMessage(
+                message
+        );
+
+
+        job.setError(
+                error == null
+                        ? message
+                        : error
+        );
+
+
+        job.setCompletedAt(
+                Instant.now()
+        );
+
+
+        job.setProcess(
+                null
+        );
     }
 }

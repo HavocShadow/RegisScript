@@ -16,30 +16,32 @@ public class JobController {
 
     private final JobService service;
 
-    public JobController(JobService service) {
+
+    public JobController(
+            JobService service
+    ) {
+
         this.service = service;
     }
 
-    /**
-     * Create / run job
-     *
-     * POST /api/v1/jobs/run
-     */
+
     @PostMapping("/run")
     public ResponseEntity<JobResponse> run(
-            @Valid @RequestBody CreateJobRequest request
+            @Valid
+            @RequestBody
+            CreateJobRequest request
     ) {
 
         return ResponseEntity
                 .accepted()
-                .body(service.create(request));
+                .body(
+                        service.create(
+                                request
+                        )
+                );
     }
 
-    /**
-     * Get current/latest job
-     *
-     * GET /api/v1/jobs/status
-     */
+
     @GetMapping("/status")
     public ResponseEntity<JobResponse> status() {
 
@@ -48,26 +50,25 @@ public class JobController {
         );
     }
 
-    /**
-     * Cancel current/latest job
-     *
-     * POST /api/v1/jobs/cancel
-     */
+
     @PostMapping("/cancel")
     public ResponseEntity<Void> cancel(
-            @RequestParam(required = false) String reason
+            @RequestParam(
+                    required = false
+            )
+            String reason
     ) {
 
-        service.cancelCurrent(reason);
+        service.cancelCurrent(
+                reason
+        );
 
-        return ResponseEntity.accepted().build();
+        return ResponseEntity
+                .accepted()
+                .build();
     }
 
-    /**
-     * Get specific job
-     *
-     * GET /api/v1/jobs/{jobId}
-     */
+
     @GetMapping("/{jobId}")
     public ResponseEntity<JobResponse> get(
             @PathVariable String jobId
@@ -78,18 +79,18 @@ public class JobController {
         );
     }
 
-    /**
-     * Cancel specific job
-     *
-     * POST /api/v1/jobs/{jobId}/cancel
-     */
+
     @PostMapping("/{jobId}/cancel")
     public ResponseEntity<Void> cancelById(
             @PathVariable String jobId
     ) {
 
-        service.cancel(jobId);
+        service.cancel(
+                jobId
+        );
 
-        return ResponseEntity.accepted().build();
+        return ResponseEntity
+                .accepted()
+                .build();
     }
 }

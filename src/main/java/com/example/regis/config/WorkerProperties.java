@@ -9,15 +9,11 @@ public class WorkerProperties {
 
     private String python;
     private String script;
-
+    private String accountsDir;
     private String links;
-    private String accounts;
-
-    private String outputRoot;
 
     private int maxConcurrency = 50;
     private int maxTimeoutSeconds = 300;
-
 
     public String getPython() {
         return python;
@@ -27,7 +23,6 @@ public class WorkerProperties {
         this.python = python;
     }
 
-
     public String getScript() {
         return script;
     }
@@ -36,6 +31,13 @@ public class WorkerProperties {
         this.script = script;
     }
 
+    public String getAccountsDir() {
+        return accountsDir;
+    }
+
+    public void setAccountsDir(String accountsDir) {
+        this.accountsDir = accountsDir;
+    }
 
     public String getLinks() {
         return links;
@@ -45,25 +47,6 @@ public class WorkerProperties {
         this.links = links;
     }
 
-
-    public String getAccounts() {
-        return accounts;
-    }
-
-    public void setAccounts(String accounts) {
-        this.accounts = accounts;
-    }
-
-
-    public String getOutputRoot() {
-        return outputRoot;
-    }
-
-    public void setOutputRoot(String outputRoot) {
-        this.outputRoot = outputRoot;
-    }
-
-
     public int getMaxConcurrency() {
         return maxConcurrency;
     }
@@ -72,15 +55,11 @@ public class WorkerProperties {
         this.maxConcurrency = maxConcurrency;
     }
 
-
     public int getMaxTimeoutSeconds() {
         return maxTimeoutSeconds;
     }
 
-    public void setMaxTimeoutSeconds(
-            int maxTimeoutSeconds
-    ) {
-        this.maxTimeoutSeconds =
-                maxTimeoutSeconds;
+    public void setMaxTimeoutSeconds(int maxTimeoutSeconds) {
+        this.maxTimeoutSeconds = maxTimeoutSeconds;
     }
 }

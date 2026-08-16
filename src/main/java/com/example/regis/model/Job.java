@@ -6,121 +6,96 @@ public class Job {
 
     private final String jobId;
 
-    /**
-     * ID user yang membuat job.
-     *
-     * Digunakan untuk menentukan:
-     * - ownership job
-     * - account file milik user
+    /*
+     * User yang membuat job.
      */
     private final String ownerUserId;
 
-    /**
-     * Mode worker.
+    /*
+     * File account yang secara eksplisit
+     * digunakan oleh job ini.
      */
+    private final String accountFile;
+
     private final String mode;
 
-    /**
-     * Jumlah worker/concurrency.
-     */
     private final int concurrency;
 
-    /**
-     * Timeout job.
-     *
-     * Satuan mengikuti konfigurasi/request
-     * yang digunakan oleh aplikasi.
-     */
     private final int timeout;
 
-    /**
-     * Status job saat ini.
-     */
     private volatile JobStatus status;
 
-    /**
-     * Progress 0 - 100.
-     */
     private volatile int progress;
 
-    /**
-     * Pesan status job.
-     */
     private volatile String message;
 
-    /**
-     * Error jika job gagal.
-     */
     private volatile String error;
 
-    /**
-     * Waktu job dibuat.
-     */
     private volatile Instant createdAt;
 
-    /**
-     * Waktu worker mulai dijalankan.
-     */
     private volatile Instant startedAt;
 
-    /**
-     * Waktu job selesai.
-     */
     private volatile Instant completedAt;
 
-    /**
-     * Python process yang sedang menjalankan job.
-     */
     private volatile Process process;
 
-
-    /*
-     * =========================================================
-     * CONSTRUCTOR
-     * =========================================================
-     */
 
     public Job(
             String jobId,
             String ownerUserId,
+            String accountFile,
             String mode,
             int concurrency,
             int timeout
     ) {
 
-        this.jobId = jobId;
+        this.jobId =
+                jobId;
 
-        this.ownerUserId = ownerUserId;
+        this.ownerUserId =
+                ownerUserId;
 
-        this.mode = mode;
+        this.accountFile =
+                accountFile;
 
-        this.concurrency = concurrency;
+        this.mode =
+                mode;
 
-        this.timeout = timeout;
+        this.concurrency =
+                concurrency;
 
-        this.status = JobStatus.QUEUED;
+        this.timeout =
+                timeout;
 
-        this.progress = 0;
+        this.status =
+                JobStatus.QUEUED;
 
-        this.message = "Job queued";
+        this.progress =
+                0;
 
-        this.error = null;
+        this.message =
+                "Job queued";
 
-        this.createdAt = Instant.now();
+        this.error =
+                null;
 
-        this.startedAt = null;
+        this.createdAt =
+                Instant.now();
 
-        this.completedAt = null;
+        this.startedAt =
+                null;
 
-        this.process = null;
+        this.completedAt =
+                null;
+
+        this.process =
+                null;
     }
 
 
-    /*
-     * =========================================================
-     * JOB ID
-     * =========================================================
-     */
+    // =========================================================
+    // JOB ID
+    // =========================================================
 
     public String getJobId() {
 
@@ -128,11 +103,9 @@ public class Job {
     }
 
 
-    /*
-     * =========================================================
-     * OWNER USER ID
-     * =========================================================
-     */
+    // =========================================================
+    // OWNER
+    // =========================================================
 
     public String getOwnerUserId() {
 
@@ -140,11 +113,19 @@ public class Job {
     }
 
 
-    /*
-     * =========================================================
-     * MODE
-     * =========================================================
-     */
+    // =========================================================
+    // ACCOUNT FILE
+    // =========================================================
+
+    public String getAccountFile() {
+
+        return accountFile;
+    }
+
+
+    // =========================================================
+    // CONFIGURATION
+    // =========================================================
 
     public String getMode() {
 
@@ -152,23 +133,11 @@ public class Job {
     }
 
 
-    /*
-     * =========================================================
-     * CONCURRENCY
-     * =========================================================
-     */
-
     public int getConcurrency() {
 
         return concurrency;
     }
 
-
-    /*
-     * =========================================================
-     * TIMEOUT
-     * =========================================================
-     */
 
     public int getTimeout() {
 
@@ -176,11 +145,9 @@ public class Job {
     }
 
 
-    /*
-     * =========================================================
-     * STATUS
-     * =========================================================
-     */
+    // =========================================================
+    // STATUS
+    // =========================================================
 
     public JobStatus getStatus() {
 
@@ -192,15 +159,14 @@ public class Job {
             JobStatus status
     ) {
 
-        this.status = status;
+        this.status =
+                status;
     }
 
 
-    /*
-     * =========================================================
-     * PROGRESS
-     * =========================================================
-     */
+    // =========================================================
+    // PROGRESS
+    // =========================================================
 
     public int getProgress() {
 
@@ -223,11 +189,9 @@ public class Job {
     }
 
 
-    /*
-     * =========================================================
-     * MESSAGE
-     * =========================================================
-     */
+    // =========================================================
+    // MESSAGE
+    // =========================================================
 
     public String getMessage() {
 
@@ -239,15 +203,14 @@ public class Job {
             String message
     ) {
 
-        this.message = message;
+        this.message =
+                message;
     }
 
 
-    /*
-     * =========================================================
-     * ERROR
-     * =========================================================
-     */
+    // =========================================================
+    // ERROR
+    // =========================================================
 
     public String getError() {
 
@@ -259,15 +222,14 @@ public class Job {
             String error
     ) {
 
-        this.error = error;
+        this.error =
+                error;
     }
 
 
-    /*
-     * =========================================================
-     * CREATED AT
-     * =========================================================
-     */
+    // =========================================================
+    // CREATED
+    // =========================================================
 
     public Instant getCreatedAt() {
 
@@ -279,15 +241,14 @@ public class Job {
             Instant createdAt
     ) {
 
-        this.createdAt = createdAt;
+        this.createdAt =
+                createdAt;
     }
 
 
-    /*
-     * =========================================================
-     * STARTED AT
-     * =========================================================
-     */
+    // =========================================================
+    // STARTED
+    // =========================================================
 
     public Instant getStartedAt() {
 
@@ -299,15 +260,14 @@ public class Job {
             Instant startedAt
     ) {
 
-        this.startedAt = startedAt;
+        this.startedAt =
+                startedAt;
     }
 
 
-    /*
-     * =========================================================
-     * COMPLETED AT
-     * =========================================================
-     */
+    // =========================================================
+    // COMPLETED
+    // =========================================================
 
     public Instant getCompletedAt() {
 
@@ -319,15 +279,14 @@ public class Job {
             Instant completedAt
     ) {
 
-        this.completedAt = completedAt;
+        this.completedAt =
+                completedAt;
     }
 
 
-    /*
-     * =========================================================
-     * PYTHON PROCESS
-     * =========================================================
-     */
+    // =========================================================
+    // PROCESS
+    // =========================================================
 
     public Process getProcess() {
 
@@ -339,6 +298,7 @@ public class Job {
             Process process
     ) {
 
-        this.process = process;
+        this.process =
+                process;
     }
 }

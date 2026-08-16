@@ -12,6 +12,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.Map;
@@ -28,12 +29,9 @@ public class JobService {
 
     private final UserRepository userRepository;
 
+    private final AccountFileService accountFileService;
 
-    /*
-     * Semua job yang sedang/baru dibuat.
-     *
-     * Key = jobId
-     */
+
     private final Map<String, Job> jobs =
             new ConcurrentHashMap<>();
 
@@ -41,31 +39,32 @@ public class JobService {
     public JobService(
             WorkerProperties properties,
             PythonWorkerService worker,
-            UserRepository userRepository
+            UserRepository userRepository,
+            AccountFileService accountFileService
     ) {
 
-        this.properties = properties;
+        this.properties =
+                properties;
 
-        this.worker = worker;
+        this.worker =
+                worker;
 
-        this.userRepository = userRepository;
+        this.userRepository =
+                userRepository;
+
+        this.accountFileService =
+                accountFileService;
     }
 
 
-    /*
-     * ============================================================
-     * CREATE / RUN JOB
-     * ============================================================
-     */
+    // ============================================================
+    // CREATE JOB
+    // ============================================================
+
     public JobResponse create(
             CreateJobRequest request
     ) {
 
-        /*
-         * Ambil user dari JWT.
-         *
-         * Jangan mengambil owner dari request frontend.
-         */
         User user =
                 getAuthenticatedUser();
 
@@ -73,12 +72,12 @@ public class JobService {
         String mode =
                 request.mode() == null ||
                 request.mode().isBlank()
+
                         ? "account-per-link"
+
                         : request.mode()
-                                .trim();
-
-
-        mode = mode.toLowerCase();
+                                .trim()
+                                .toLowerCase();
 
 
         if (
@@ -98,13 +97,17 @@ public class JobService {
 
         int concurrency =
                 request.concurrency() == null
+
                         ? 10
+
                         : request.concurrency();
 
 
         int timeout =
                 request.timeout() == null
+
                         ? 15
+
                         : request.timeout();
 
 
@@ -136,39 +139,81 @@ public class JobService {
         }
 
 
+        /*
+         * CATATAN:
+         *
+         * Jika maxTimeoutSeconds benar-benar seconds,
+         * perbandingan harus dikonversi.
+         */
+
         if (
-                timeout >
+                timeout * 60 >
                         properties.getMaxTimeoutSeconds()
         ) {
 
             throw new IllegalArgumentException(
                     "Timeout exceeds limit: "
-                            + properties.getMaxTimeoutSeconds()
-                            + " seconds"
+                            + (
+                            properties
+                                    .getMaxTimeoutSeconds()
+                            / 60
+                    )
+                            + " minute(s)"
             );
         }
 
 
-        /*
-         * Pastikan user mempunyai file account.
-         *
-         * Karena Python nanti akan membaca file ini.
-         */
         String ownerUserId =
                 user.getId().toString();
 
 
         /*
-         * Buat job.
+         * ========================================================
+         * SNAPSHOT ACCOUNT FILE
+         * ========================================================
+         *
+         * File dipilih SEKARANG.
+         *
+         * Setelah masuk ke Job, worker tidak akan
+         * mencari file lagi berdasarkan userId.
          */
-        String jobId =
-                UUID.randomUUID().toString();
 
+        Path accountFile =
+                accountFileService
+                        .getLatestAccountFile(
+                                ownerUserId
+                        );
+
+
+        if (
+                accountFile == null ||
+                !java.nio.file.Files.exists(accountFile)
+        ) {
+
+            throw new IllegalStateException(
+                    "Account file does not exist: "
+                            + accountFile
+            );
+        }
+
+
+        String jobId =
+                UUID.randomUUID()
+                        .toString();
+
+
+        /*
+         * ========================================================
+         * CREATE JOB
+         * ========================================================
+         */
 
         Job job =
                 new Job(
                         jobId,
                         ownerUserId,
+                        accountFile.toAbsolutePath()
+                                .toString(),
                         mode,
                         concurrency,
                         timeout
@@ -176,8 +221,9 @@ public class JobService {
 
 
         /*
-         * Simpan sebelum worker dijalankan.
+         * Simpan job terlebih dahulu.
          */
+
         jobs.put(
                 jobId,
                 job
@@ -185,9 +231,12 @@ public class JobService {
 
 
         /*
-         * Jalankan Python secara asynchronous.
+         * Jalankan worker.
          */
-        worker.execute(job);
+
+        worker.execute(
+                job
+        );
 
 
         return get(
@@ -196,32 +245,30 @@ public class JobService {
     }
 
 
-    /*
-     * ============================================================
-     * GET JOB BY ID
-     * ============================================================
-     */
+    // ============================================================
+    // GET
+    // ============================================================
+
     public JobResponse get(
             String jobId
     ) {
 
         Job job =
-                requireOwnedJob(jobId);
+                requireOwnedJob(
+                        jobId
+                );
 
 
-        return toResponse(job);
+        return toResponse(
+                job
+        );
     }
 
 
-    /*
-     * ============================================================
-     * GET CURRENT JOB
-     * ============================================================
-     *
-     * Digunakan oleh:
-     *
-     * GET /api/v1/jobs/status
-     */
+    // ============================================================
+    // CURRENT
+    // ============================================================
+
     public JobResponse getCurrent() {
 
         User user =
@@ -235,25 +282,21 @@ public class JobService {
         return jobs.values()
                 .stream()
 
-                /*
-                 * Hanya job milik user tersebut.
-                 */
                 .filter(
                         job ->
                                 job.getOwnerUserId()
                                         .equals(ownerUserId)
                 )
 
-                /*
-                 * Ambil job terbaru.
-                 */
                 .max(
                         Comparator.comparing(
                                 Job::getCreatedAt
                         )
                 )
 
-                .map(this::toResponse)
+                .map(
+                        this::toResponse
+                )
 
                 .orElseThrow(
                         () ->
@@ -264,11 +307,10 @@ public class JobService {
     }
 
 
-    /*
-     * ============================================================
-     * CANCEL CURRENT JOB
-     * ============================================================
-     */
+    // ============================================================
+    // CANCEL CURRENT
+    // ============================================================
+
     public void cancelCurrent(
             String reason
     ) {
@@ -312,17 +354,18 @@ public class JobService {
     }
 
 
-    /*
-     * ============================================================
-     * CANCEL SPECIFIC JOB
-     * ============================================================
-     */
+    // ============================================================
+    // CANCEL
+    // ============================================================
+
     public void cancel(
             String jobId
     ) {
 
         Job job =
-                requireOwnedJob(jobId);
+                requireOwnedJob(
+                        jobId
+                );
 
 
         cancelJob(
@@ -332,11 +375,10 @@ public class JobService {
     }
 
 
-    /*
-     * ============================================================
-     * INTERNAL CANCEL
-     * ============================================================
-     */
+    // ============================================================
+    // INTERNAL CANCEL
+    // ============================================================
+
     private void cancelJob(
             Job job,
             String reason
@@ -346,10 +388,6 @@ public class JobService {
                 job.getStatus();
 
 
-        /*
-         * Jangan melakukan cancel terhadap
-         * job yang sudah selesai.
-         */
         if (
                 status == JobStatus.COMPLETED ||
                 status == JobStatus.FAILED ||
@@ -360,9 +398,6 @@ public class JobService {
         }
 
 
-        /*
-         * Tandai dahulu sebagai CANCELLED.
-         */
         job.setStatus(
                 JobStatus.CANCELLED
         );
@@ -382,9 +417,6 @@ public class JobService {
                 job.getProcess();
 
 
-        /*
-         * Hentikan Python process.
-         */
         if (
                 process != null &&
                 process.isAlive()
@@ -423,11 +455,10 @@ public class JobService {
     }
 
 
-    /*
-     * ============================================================
-     * REQUIRE OWNED JOB
-     * ============================================================
-     */
+    // ============================================================
+    // REQUIRE OWNED JOB
+    // ============================================================
+
     private Job requireOwnedJob(
             String jobId
     ) {
@@ -452,12 +483,6 @@ public class JobService {
                 user.getId().toString();
 
 
-        /*
-         * SECURITY:
-         *
-         * User A tidak boleh melihat
-         * Job milik User B.
-         */
         if (
                 !job.getOwnerUserId()
                         .equals(ownerUserId)
@@ -473,11 +498,10 @@ public class JobService {
     }
 
 
-    /*
-     * ============================================================
-     * AUTHENTICATED USER
-     * ============================================================
-     */
+    // ============================================================
+    // AUTHENTICATED USER
+    // ============================================================
+
     private User getAuthenticatedUser() {
 
         Authentication authentication =
@@ -523,11 +547,10 @@ public class JobService {
     }
 
 
-    /*
-     * ============================================================
-     * RESPONSE
-     * ============================================================
-     */
+    // ============================================================
+    // RESPONSE
+    // ============================================================
+
     private JobResponse toResponse(
             Job job
     ) {

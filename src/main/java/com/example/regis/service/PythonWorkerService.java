@@ -30,15 +30,15 @@ public class PythonWorkerService {
             WorkerProperties properties
     ) {
 
-        this.properties = properties;
+        this.properties =
+                properties;
     }
 
 
-    /*
-     * ============================================================
-     * EXECUTE PYTHON WORKER
-     * ============================================================
-     */
+    // ============================================================
+    // EXECUTE
+    // ============================================================
+
     @Async("workerExecutor")
     public void execute(
             Job job
@@ -64,16 +64,31 @@ public class PythonWorkerService {
         );
 
 
+        /*
+         * ========================================================
+         * ACCOUNT FILE
+         * ========================================================
+         *
+         * PENTING:
+         *
+         * Jangan lagi mencari berdasarkan userId.
+         *
+         * Job sudah menyimpan file yang harus digunakan.
+         */
+
         Path accountFile =
-                getUserAccountFile(
-                        job.getOwnerUserId()
+                Path.of(
+                        job.getAccountFile()
                 );
 
 
         /*
-         * Pastikan file account milik user memang ada.
+         * Pastikan file masih ada.
          */
-        if (!Files.exists(accountFile)) {
+
+        if (
+                !Files.exists(accountFile)
+        ) {
 
             failJob(
                     job,
@@ -87,8 +102,28 @@ public class PythonWorkerService {
 
 
         /*
-         * Jangan menjalankan Python jika file kosong.
+         * Pastikan benar-benar regular file.
          */
+
+        if (
+                !Files.isRegularFile(accountFile)
+        ) {
+
+            failJob(
+                    job,
+                    "Invalid account file",
+                    "Account path is not a regular file: "
+                            + accountFile
+            );
+
+            return;
+        }
+
+
+        /*
+         * Pastikan file tidak kosong.
+         */
+
         try {
 
             if (
@@ -98,7 +133,8 @@ public class PythonWorkerService {
                 failJob(
                         job,
                         "Account file is empty",
-                        "No account available for this user"
+                        "No account available in: "
+                                + accountFile
                 );
 
                 return;
@@ -120,17 +156,8 @@ public class PythonWorkerService {
          * ========================================================
          * COMMAND
          * ========================================================
-         *
-         * Contoh hasil:
-         *
-         * python
-         * /home/vortexis/RegisV8_Fix/main.py
-         * --links /.../link.txt
-         * --accounts /.../accounts/17.txt
-         * --mode account-per-link
-         * --concurrency 10
-         * --timeout 15
          */
+
         List<String> command =
                 new ArrayList<>();
 
@@ -161,13 +188,12 @@ public class PythonWorkerService {
 
 
         /*
-         * PENTING:
-         *
-         * Python sekarang membaca account file
-         * MILIK USER yang membuat job.
+         * FILE YANG SUDAH DI-SNAPSHOT OLEH JOB.
          */
+
         command.add(
-                accountFile.toString()
+                accountFile.toAbsolutePath()
+                        .toString()
         );
 
 
@@ -205,7 +231,8 @@ public class PythonWorkerService {
         );
 
 
-        Process process = null;
+        Process process =
+                null;
 
 
         try {
@@ -215,6 +242,7 @@ public class PythonWorkerService {
              * PROCESS BUILDER
              * ====================================================
              */
+
             ProcessBuilder processBuilder =
                     new ProcessBuilder(
                             command
@@ -222,17 +250,19 @@ public class PythonWorkerService {
 
 
             /*
-             * Working directory:
-             *
-             * /home/vortexis/RegisV8_Fix
+             * Working directory berdasarkan
+             * lokasi script Python.
              */
+
             Path scriptPath =
                     Path.of(
                             properties.getScript()
                     );
 
 
-            if (scriptPath.getParent() != null) {
+            if (
+                    scriptPath.getParent() != null
+            ) {
 
                 processBuilder.directory(
                         scriptPath
@@ -243,8 +273,9 @@ public class PythonWorkerService {
 
 
             /*
-             * Gabungkan stderr + stdout.
+             * Gabungkan stdout + stderr.
              */
+
             processBuilder.redirectErrorStream(
                     true
             );
@@ -255,6 +286,7 @@ public class PythonWorkerService {
              * START
              * ====================================================
              */
+
             process =
                     processBuilder.start();
 
@@ -271,12 +303,10 @@ public class PythonWorkerService {
 
             /*
              * ====================================================
-             * READ PYTHON OUTPUT
+             * OUTPUT READER
              * ====================================================
-             *
-             * Reader dijalankan secara terpisah supaya
-             * waitFor(timeout) tetap bisa bekerja.
              */
+
             Process finalProcess =
                     process;
 
@@ -304,14 +334,9 @@ public class PythonWorkerService {
              * TIMEOUT
              * ====================================================
              *
-             * timeout dari frontend dianggap MENIT.
-             *
-             * Contoh:
-             *
-             * timeout = 15
-             *
-             * berarti 15 menit.
+             * Job timeout = minutes.
              */
+
             long timeoutSeconds =
                     job.getTimeout() * 60L;
 
@@ -328,6 +353,7 @@ public class PythonWorkerService {
              * TIMEOUT
              * ====================================================
              */
+
             if (!finished) {
 
                 process.destroy();
@@ -344,9 +370,6 @@ public class PythonWorkerService {
                 }
 
 
-                /*
-                 * Jangan mengubah CANCELLED menjadi FAILED.
-                 */
                 if (
                         job.getStatus()
                                 != JobStatus.CANCELLED
@@ -367,8 +390,9 @@ public class PythonWorkerService {
 
 
             /*
-             * Tunggu reader selesai membaca output.
+             * Tunggu output reader.
              */
+
             try {
 
                 outputReader.join(
@@ -385,9 +409,9 @@ public class PythonWorkerService {
 
 
             /*
-             * Jika user melakukan cancel
-             * saat process berjalan.
+             * Jangan overwrite CANCELLED.
              */
+
             if (
                     job.getStatus()
                             == JobStatus.CANCELLED
@@ -406,7 +430,10 @@ public class PythonWorkerService {
              * SUCCESS
              * ====================================================
              */
-            if (exitCode == 0) {
+
+            if (
+                    exitCode == 0
+            ) {
 
                 job.setProgress(
                         100
@@ -421,15 +448,15 @@ public class PythonWorkerService {
                 job.setMessage(
                         "Python worker completed"
                 );
-
-
             }
+
 
             /*
              * ====================================================
              * FAILED
              * ====================================================
              */
+
             else {
 
                 job.setStatus(
@@ -443,13 +470,6 @@ public class PythonWorkerService {
                 );
 
 
-                /*
-                 * Output error sebenarnya sudah
-                 * ditangani oleh readOutput().
-                 *
-                 * Kalau Python tidak memberikan output,
-                 * tetap berikan pesan generic.
-                 */
                 if (
                         job.getError() == null ||
                         job.getError().isBlank()
@@ -467,10 +487,6 @@ public class PythonWorkerService {
                 Exception e
         ) {
 
-            /*
-             * Jika process dibatalkan,
-             * jangan overwrite CANCELLED menjadi FAILED.
-             */
             if (
                     job.getStatus()
                             != JobStatus.CANCELLED
@@ -498,11 +514,10 @@ public class PythonWorkerService {
     }
 
 
-    /*
-     * ============================================================
-     * READ PYTHON OUTPUT
-     * ============================================================
-     */
+    // ============================================================
+    // READ OUTPUT
+    // ============================================================
+
     private void readOutput(
             Process process,
             Job job
@@ -541,10 +556,6 @@ public class PythonWorkerService {
                 );
 
 
-                /*
-                 * Jika Python gagal,
-                 * simpan output sebagai error.
-                 */
                 if (
                         line.startsWith(
                                 "ERROR:"
@@ -564,9 +575,6 @@ public class PythonWorkerService {
                 Exception e
         ) {
 
-            /*
-             * Jangan mengubah CANCELLED menjadi error.
-             */
             if (
                     job.getStatus()
                             != JobStatus.CANCELLED
@@ -580,21 +588,15 @@ public class PythonWorkerService {
     }
 
 
-    /*
-     * ============================================================
-     * PROGRESS PARSER
-     * ============================================================
-     */
+    // ============================================================
+    // PROGRESS
+    // ============================================================
+
     private void parseProgress(
             Job job,
             String line
     ) {
 
-        /*
-         * Format Python:
-         *
-         * PROGRESS:50
-         */
         if (
                 line.startsWith(
                         "PROGRESS:"
@@ -616,7 +618,6 @@ public class PythonWorkerService {
                         progress
                 );
 
-
             } catch (
                     NumberFormatException ignored
             ) {
@@ -626,11 +627,6 @@ public class PythonWorkerService {
         }
 
 
-        /*
-         * Format Python:
-         *
-         * MESSAGE:Processing account 10
-         */
         if (
                 line.startsWith(
                         "MESSAGE:"
@@ -647,37 +643,10 @@ public class PythonWorkerService {
     }
 
 
-    /*
-     * ============================================================
-     * USER ACCOUNT FILE
-     * ============================================================
-     */
-    private Path getUserAccountFile(
-            String userId
-    ) {
+    // ============================================================
+    // FAIL JOB
+    // ============================================================
 
-        /*
-         * Proteksi path traversal.
-         */
-        String safeUserId =
-                userId.replaceAll(
-                        "[^a-zA-Z0-9_-]",
-                        "_"
-                );
-
-
-        return Path.of(
-                properties.getAccountsDir(),
-                safeUserId + ".txt"
-        );
-    }
-
-
-    /*
-     * ============================================================
-     * FAIL JOB
-     * ============================================================
-     */
     private void failJob(
             Job job,
             String message,

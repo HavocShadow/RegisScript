@@ -26,9 +26,6 @@ public class AccountService {
 
     private final WorkerProperties properties;
 
-    /*
-     * Mapping bank.
-     */
     private static final Map<String, String> BANK_CODES =
             Map.ofEntries(
                     Map.entry("DANA", "60"),
@@ -91,22 +88,20 @@ public class AccountService {
     }
 
     /*
-     * ============================
+     * ============================================================
      * SINGLE ACCOUNT
-     * ============================
+     * ============================================================
      */
 
     public AccountResponse add(
             AccountRequest request
     ) {
 
-        Account account = createAccount(request);
+        Account account =
+                createAccount(request);
 
-        /*
-         * Buat FILE BARU.
-         * File lama tidak disentuh.
-         */
-        saveAccount(account);
+        Path file =
+                saveAccount(account);
 
         return new AccountResponse(
                 account.getUserId(),
@@ -119,35 +114,39 @@ public class AccountService {
     }
 
     /*
-     * ============================
+     * ============================================================
      * BULK ACCOUNT
-     * ============================
+     * ============================================================
      */
 
     public List<AccountResponse> addBulk(
             BulkAccountRequest request
     ) {
 
+        if (
+                request == null ||
+                request.accounts() == null ||
+                request.accounts().isEmpty()
+        ) {
+
+            throw new IllegalArgumentException(
+                    "Account list cannot be empty"
+            );
+        }
+
         List<Account> accounts =
                 new ArrayList<>();
 
-        /*
-         * Validasi seluruh account dahulu.
-         */
-        for (AccountRequest item : request.accounts()) {
+        for (
+                AccountRequest item :
+                request.accounts()
+        ) {
 
             accounts.add(
                     createAccount(item)
             );
         }
 
-        /*
-         * Buat SATU FILE BARU untuk
-         * seluruh bulk import.
-         *
-         * File import sebelumnya
-         * TIDAK dihapus.
-         */
         saveAccounts(accounts);
 
         return accounts
@@ -167,14 +166,21 @@ public class AccountService {
     }
 
     /*
-     * ============================
+     * ============================================================
      * CREATE ACCOUNT
-     * ============================
+     * ============================================================
      */
 
     private Account createAccount(
             AccountRequest request
     ) {
+
+        if (request == null) {
+
+            throw new IllegalArgumentException(
+                    "Account request cannot be null"
+            );
+        }
 
         String bankType =
                 request.bankType()
@@ -203,27 +209,34 @@ public class AccountService {
     }
 
     /*
-     * ============================
+     * ============================================================
      * SAVE SINGLE
-     * ============================
+     * ============================================================
      */
 
-    private void saveAccount(
+    private Path saveAccount(
             Account account
     ) {
 
-        saveAccounts(
+        return saveAccounts(
                 List.of(account)
         );
     }
 
     /*
-     * ============================
+     * ============================================================
      * SAVE ACCOUNTS
-     * ============================
+     * ============================================================
+     *
+     * Return:
+     *
+     * Path file yang BARU dibuat.
+     *
+     * Ini penting agar sistem mengetahui
+     * file mana yang dibuat oleh import ini.
      */
 
-    private synchronized void saveAccounts(
+    private synchronized Path saveAccounts(
             List<Account> accounts
     ) {
 
@@ -237,22 +250,20 @@ public class AccountService {
             );
         }
 
-        /*
-         * Ambil userId dari account pertama.
-         *
-         * Untuk bulk import sebaiknya semua
-         * account memang milik user yang sama.
-         */
         String userId =
                 accounts.get(0)
                         .getUserId()
                         .trim();
 
         /*
-         * Pastikan seluruh account dalam bulk
-         * memiliki userId yang sama.
+         * Semua account dalam satu bulk
+         * harus milik user yang sama.
          */
-        for (Account account : accounts) {
+
+        for (
+                Account account :
+                accounts
+        ) {
 
             if (
                     !userId.equals(
@@ -268,18 +279,11 @@ public class AccountService {
         }
 
         /*
-         * Base directory diambil dari
-         * worker.accounts.
-         *
-         * Contoh:
-         *
-         * worker.accounts=
-         * /home/vortexis/Registrar/accounts/account.txt
-         *
-         * maka directory:
-         *
-         * /home/vortexis/Registrar/accounts
+         * ========================================================
+         * ACCOUNT DIRECTORY
+         * ========================================================
          */
+
         String accountsDir =
                 properties.getAccountsDir();
 
@@ -288,9 +292,9 @@ public class AccountService {
                 accountsDir.isBlank()
         ) {
 
-        throw new IllegalStateException(
-                "worker.accounts-dir is not configured"
-        );
+            throw new IllegalStateException(
+                    "worker.accounts-dir is not configured"
+            );
         }
 
         Path directory =
@@ -303,9 +307,11 @@ public class AccountService {
             );
 
             /*
-             * Sanitasi userId agar tidak bisa
-             * membuat path aneh.
+             * ====================================================
+             * SANITIZE USER ID
+             * ====================================================
              */
+
             String safeUserId =
                     userId.replaceAll(
                             "[^a-zA-Z0-9_-]",
@@ -313,8 +319,11 @@ public class AccountService {
                     );
 
             /*
-             * Timestamp.
+             * ====================================================
+             * TIMESTAMP
+             * ====================================================
              */
+
             String timestamp =
                     LocalDateTime.now()
                             .format(
@@ -322,8 +331,11 @@ public class AccountService {
                             );
 
             /*
-             * UUID agar nama file selalu unik.
+             * ====================================================
+             * UNIQUE ID
+             * ====================================================
              */
+
             String uniqueId =
                     UUID.randomUUID()
                             .toString()
@@ -333,10 +345,13 @@ public class AccountService {
                             );
 
             /*
-             * Contoh:
+             * ====================================================
+             * FILE NAME
+             * ====================================================
              *
-             * user_regis1_20260815_233001_a81f23c4.txt
+             * user_1_20260816_020501_a81f23c4.txt
              */
+
             String fileName =
                     "user_"
                             + safeUserId
@@ -352,8 +367,11 @@ public class AccountService {
                     );
 
             /*
-             * Convert account → lines.
+             * ====================================================
+             * ACCOUNT → FILE LINES
+             * ====================================================
              */
+
             List<String> lines =
                     accounts
                             .stream()
@@ -363,12 +381,11 @@ public class AccountService {
                             .toList();
 
             /*
-             * CREATE_NEW sangat penting.
-             *
-             * Kalau file ternyata sudah ada,
-             * Java akan gagal daripada
-             * menimpa file tersebut.
+             * ====================================================
+             * CREATE NEW
+             * ====================================================
              */
+
             Files.write(
                     file,
                     lines,
@@ -380,6 +397,14 @@ public class AccountService {
                     "[ACCOUNT FILE CREATED] "
                             + file.toAbsolutePath()
             );
+
+            /*
+             * PENTING:
+             *
+             * Kembalikan file yang benar-benar dibuat.
+             */
+
+            return file;
 
         } catch (Exception e) {
 

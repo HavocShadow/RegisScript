@@ -1,560 +1,390 @@
 package com.example.regis.service;
 
 import com.example.regis.config.WorkerProperties;
-import com.example.regis.dto.CreateJobRequest;
-import com.example.regis.dto.JobResponse;
-import com.example.regis.model.Job;
-import com.example.regis.model.JobStatus;
-import com.example.regis.model.User;
-import com.example.regis.repository.UserRepository;
+import com.example.regis.dto.AccountRequest;
+import com.example.regis.dto.AccountResponse;
+import com.example.regis.dto.BulkAccountRequest;
+import com.example.regis.model.Account;
 
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
-import java.time.Instant;
-import java.util.Comparator;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
 @Service
-public class JobService {
+public class AccountService {
 
     private final WorkerProperties properties;
 
-    private final PythonWorkerService worker;
-
-    private final UserRepository userRepository;
-
-
     /*
-     * Semua job yang sedang/baru dibuat.
-     *
-     * Key = jobId
+     * Mapping bank.
      */
-    private final Map<String, Job> jobs =
-            new ConcurrentHashMap<>();
+    private static final Map<String, String> BANK_CODES =
+            Map.ofEntries(
+                    Map.entry("DANA", "60"),
+                    Map.entry("BCA", "37"),
+                    Map.entry("BRI", "45"),
+                    Map.entry("GOPAY", "59"),
+                    Map.entry("MANDIRI", "40"),
+                    Map.entry("OVO", "58"),
+                    Map.entry("BNI", "38"),
+                    Map.entry("LINKAJA", "63"),
+                    Map.entry("SHOPEEPAY", "116"),
+                    Map.entry("CIMB NIAGA", "57"),
+                    Map.entry("SAKUKU", "115"),
+                    Map.entry("SEABANK", "120"),
+                    Map.entry("ALLO BANK", "124"),
+                    Map.entry("BANK ACEH", "126"),
+                    Map.entry("ALADIN", "130"),
+                    Map.entry("ARTHA GRAHA", "103"),
+                    Map.entry("ARTOS", "104"),
+                    Map.entry("BCA BLU", "123"),
+                    Map.entry("BCA SYARIAH", "47"),
+                    Map.entry("BJB", "105"),
+                    Map.entry("BUKOPIN", "56"),
+                    Map.entry("COMMONWEALTH", "107"),
+                    Map.entry("DANAMON", "55"),
+                    Map.entry("DBS", "108"),
+                    Map.entry("HSBC", "110"),
+                    Map.entry("JAGO", "122"),
+                    Map.entry("BANK JAKARTA", "109"),
+                    Map.entry("JATIM", "111"),
+                    Map.entry("MASPION", "42"),
+                    Map.entry("MAYBANK", "112"),
+                    Map.entry("MEGA", "113"),
+                    Map.entry("MEGA SYARIAH", "128"),
+                    Map.entry("MESTIKA DHARMA", "132"),
+                    Map.entry("MUAMALAT", "51"),
+                    Map.entry("NAGARI", "114"),
+                    Map.entry("OCBC NISP", "52"),
+                    Map.entry("PAN INDONESIA", "46"),
+                    Map.entry("PERMATA", "54"),
+                    Map.entry("SAQU", "127"),
+                    Map.entry("SINARMAS", "43"),
+                    Map.entry("SYARIAH INDONESIA", "64"),
+                    Map.entry("BTN", "39"),
+                    Map.entry("UOB", "53"),
+                    Map.entry("HIBANK", "44"),
+                    Map.entry("KEB HANA", "129"),
+                    Map.entry("NEO BANK", "125"),
+                    Map.entry("SMBC", "106"),
+                    Map.entry("SUPERBANK", "131")
+            );
 
+    private static final DateTimeFormatter FILE_DATE_FORMAT =
+            DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss");
 
-    public JobService(
-            WorkerProperties properties,
-            PythonWorkerService worker,
-            UserRepository userRepository
+    public AccountService(
+            WorkerProperties properties
     ) {
-
         this.properties = properties;
-
-        this.worker = worker;
-
-        this.userRepository = userRepository;
     }
 
-
     /*
-     * ============================================================
-     * CREATE / RUN JOB
-     * ============================================================
+     * ============================
+     * SINGLE ACCOUNT
+     * ============================
      */
-    public JobResponse create(
-            CreateJobRequest request
+
+    public AccountResponse add(
+            AccountRequest request
     ) {
 
-        /*
-         * Ambil user dari JWT.
-         *
-         * Jangan mengambil owner dari request frontend.
-         */
-        User user =
-                getAuthenticatedUser();
-
-
-        String mode =
-                request.mode() == null ||
-                request.mode().isBlank()
-                        ? "account-per-link"
-                        : request.mode()
-                                .trim();
-
-
-        mode = mode.toLowerCase();
-
-
-        if (
-                !Set.of(
-                        "account-per-link",
-                        "link-per-account",
-                        "one-to-one",
-                        "repeat-accounts"
-                ).contains(mode)
-        ) {
-
-            throw new IllegalArgumentException(
-                    "Invalid mode: " + mode
-            );
-        }
-
-
-        int concurrency =
-                request.concurrency() == null
-                        ? 10
-                        : request.concurrency();
-
-
-        int timeout =
-                request.timeout() == null
-                        ? 15
-                        : request.timeout();
-
-
-        if (concurrency < 1) {
-
-            throw new IllegalArgumentException(
-                    "Concurrency must be at least 1"
-            );
-        }
-
-
-        if (
-                concurrency >
-                        properties.getMaxConcurrency()
-        ) {
-
-            throw new IllegalArgumentException(
-                    "Concurrency exceeds limit: "
-                            + properties.getMaxConcurrency()
-            );
-        }
-
-
-        if (timeout < 1) {
-
-            throw new IllegalArgumentException(
-                    "Timeout must be at least 1 minute"
-            );
-        }
-
-
-        if (
-                timeout >
-                        properties.getMaxTimeoutSeconds()
-        ) {
-
-            throw new IllegalArgumentException(
-                    "Timeout exceeds limit: "
-                            + properties.getMaxTimeoutSeconds()
-                            + " seconds"
-            );
-        }
-
+        Account account = createAccount(request);
 
         /*
-         * Pastikan user mempunyai file account.
-         *
-         * Karena Python nanti akan membaca file ini.
+         * Buat FILE BARU.
+         * File lama tidak disentuh.
          */
-        String ownerUserId =
-                user.getId().toString();
+        saveAccount(account);
 
-
-        /*
-         * Buat job.
-         */
-        String jobId =
-                UUID.randomUUID().toString();
-
-
-        Job job =
-                new Job(
-                        jobId,
-                        mode,
-                        concurrency,
-                        timeout,
-                        ownerUserId
-                );
-
-
-        /*
-         * Simpan sebelum worker dijalankan.
-         */
-        jobs.put(
-                jobId,
-                job
-        );
-
-
-        /*
-         * Jalankan Python secara asynchronous.
-         */
-        worker.execute(job);
-
-
-        return get(
-                jobId
+        return new AccountResponse(
+                account.getUserId(),
+                account.getFullName(),
+                account.getBankType(),
+                account.getBankCode(),
+                account.getAccountNumber(),
+                true
         );
     }
 
-
     /*
-     * ============================================================
-     * GET JOB BY ID
-     * ============================================================
+     * ============================
+     * BULK ACCOUNT
+     * ============================
      */
-    public JobResponse get(
-            String jobId
+
+    public List<AccountResponse> addBulk(
+            BulkAccountRequest request
     ) {
 
-        Job job =
-                requireOwnedJob(jobId);
+        List<Account> accounts =
+                new ArrayList<>();
 
+        /*
+         * Validasi seluruh account dahulu.
+         */
+        for (AccountRequest item : request.accounts()) {
 
-        return toResponse(job);
-    }
+            accounts.add(
+                    createAccount(item)
+            );
+        }
 
+        /*
+         * Buat SATU FILE BARU untuk
+         * seluruh bulk import.
+         *
+         * File import sebelumnya
+         * TIDAK dihapus.
+         */
+        saveAccounts(accounts);
 
-    /*
-     * ============================================================
-     * GET CURRENT JOB
-     * ============================================================
-     *
-     * Digunakan oleh:
-     *
-     * GET /api/v1/jobs/status
-     */
-    public JobResponse getCurrent() {
-
-        User user =
-                getAuthenticatedUser();
-
-
-        String ownerUserId =
-                user.getId().toString();
-
-
-        return jobs.values()
+        return accounts
                 .stream()
-
-                /*
-                 * Hanya job milik user tersebut.
-                 */
-                .filter(
-                        job ->
-                                job.getOwnerUserId()
-                                        .equals(ownerUserId)
-                )
-
-                /*
-                 * Ambil job terbaru.
-                 */
-                .max(
-                        Comparator.comparing(
-                                Job::getCreatedAt
-                        )
-                )
-
-                .map(this::toResponse)
-
-                .orElseThrow(
-                        () ->
-                                new IllegalArgumentException(
-                                        "No job found"
+                .map(
+                        account ->
+                                new AccountResponse(
+                                        account.getUserId(),
+                                        account.getFullName(),
+                                        account.getBankType(),
+                                        account.getBankCode(),
+                                        account.getAccountNumber(),
+                                        true
                                 )
-                );
+                )
+                .toList();
     }
 
-
     /*
-     * ============================================================
-     * CANCEL CURRENT JOB
-     * ============================================================
+     * ============================
+     * CREATE ACCOUNT
+     * ============================
      */
-    public void cancelCurrent(
-            String reason
+
+    private Account createAccount(
+            AccountRequest request
     ) {
 
-        User user =
-                getAuthenticatedUser();
+        String bankType =
+                request.bankType()
+                        .trim()
+                        .toUpperCase();
 
+        String bankCode =
+                BANK_CODES.get(bankType);
 
-        String ownerUserId =
-                user.getId().toString();
+        if (bankCode == null) {
 
-
-        Job job =
-                jobs.values()
-                        .stream()
-
-                        .filter(
-                                item ->
-                                        item.getOwnerUserId()
-                                                .equals(ownerUserId)
-                        )
-
-                        .max(
-                                Comparator.comparing(
-                                        Job::getCreatedAt
-                                )
-                        )
-
-                        .orElseThrow(
-                                () ->
-                                        new IllegalArgumentException(
-                                                "No job found"
-                                        )
-                        );
-
-
-        cancelJob(
-                job,
-                reason
-        );
-    }
-
-
-    /*
-     * ============================================================
-     * CANCEL SPECIFIC JOB
-     * ============================================================
-     */
-    public void cancel(
-            String jobId
-    ) {
-
-        Job job =
-                requireOwnedJob(jobId);
-
-
-        cancelJob(
-                job,
-                "Cancelled by user"
-        );
-    }
-
-
-    /*
-     * ============================================================
-     * INTERNAL CANCEL
-     * ============================================================
-     */
-    private void cancelJob(
-            Job job,
-            String reason
-    ) {
-
-        JobStatus status =
-                job.getStatus();
-
-
-        /*
-         * Jangan melakukan cancel terhadap
-         * job yang sudah selesai.
-         */
-        if (
-                status == JobStatus.COMPLETED ||
-                status == JobStatus.FAILED ||
-                status == JobStatus.CANCELLED
-        ) {
-
-            return;
+            throw new IllegalArgumentException(
+                    "Unsupported bank type: "
+                            + bankType
+            );
         }
 
-
-        /*
-         * Tandai dahulu sebagai CANCELLED.
-         */
-        job.setStatus(
-                JobStatus.CANCELLED
+        return new Account(
+                request.userId().trim(),
+                request.password().trim(),
+                request.fullName().trim(),
+                bankType,
+                bankCode,
+                request.accountNumber().trim()
         );
+    }
 
+    /*
+     * ============================
+     * SAVE SINGLE
+     * ============================
+     */
 
-        job.setMessage(
-                reason == null ||
-                reason.isBlank()
+    private void saveAccount(
+            Account account
+    ) {
 
-                        ? "Job cancelled"
-
-                        : reason
+        saveAccounts(
+                List.of(account)
         );
+    }
 
+    /*
+     * ============================
+     * SAVE ACCOUNTS
+     * ============================
+     */
 
-        Process process =
-                job.getProcess();
+    private synchronized void saveAccounts(
+            List<Account> accounts
+    ) {
 
-
-        /*
-         * Hentikan Python process.
-         */
         if (
-                process != null &&
-                process.isAlive()
+                accounts == null ||
+                accounts.isEmpty()
         ) {
 
-            process.destroy();
+            throw new IllegalArgumentException(
+                    "Account list cannot be empty"
+            );
+        }
 
+        /*
+         * Ambil userId dari account pertama.
+         *
+         * Untuk bulk import sebaiknya semua
+         * account memang milik user yang sama.
+         */
+        String userId =
+                accounts.get(0)
+                        .getUserId()
+                        .trim();
 
-            try {
+        /*
+         * Pastikan seluruh account dalam bulk
+         * memiliki userId yang sama.
+         */
+        for (Account account : accounts) {
 
-                if (
-                        !process.waitFor(
-                                3,
-                                java.util.concurrent.TimeUnit.SECONDS
-                        )
-                ) {
-
-                    process.destroyForcibly();
-                }
-
-            } catch (
-                    InterruptedException e
+            if (
+                    !userId.equals(
+                            account.getUserId().trim()
+                    )
             ) {
 
-                Thread.currentThread()
-                        .interrupt();
-
-                process.destroyForcibly();
+                throw new IllegalArgumentException(
+                        "All accounts in one import "
+                                + "must belong to the same user"
+                );
             }
         }
 
-
-        job.setCompletedAt(
-                Instant.now()
-        );
-    }
-
-
-    /*
-     * ============================================================
-     * REQUIRE OWNED JOB
-     * ============================================================
-     */
-    private Job requireOwnedJob(
-            String jobId
-    ) {
-
-        Job job =
-                jobs.get(jobId);
-
-
-        if (job == null) {
-
-            throw new IllegalArgumentException(
-                    "Job not found"
-            );
-        }
-
-
-        User user =
-                getAuthenticatedUser();
-
-
-        String ownerUserId =
-                user.getId().toString();
-
-
         /*
-         * SECURITY:
+         * Base directory diambil dari
+         * worker.accounts.
          *
-         * User A tidak boleh melihat
-         * Job milik User B.
+         * Contoh:
+         *
+         * worker.accounts=
+         * /home/vortexis/Registrar/accounts/account.txt
+         *
+         * maka directory:
+         *
+         * /home/vortexis/Registrar/accounts
          */
-        if (
-                !job.getOwnerUserId()
-                        .equals(ownerUserId)
-        ) {
-
-            throw new IllegalArgumentException(
-                    "Job not found"
-            );
-        }
-
-
-        return job;
-    }
-
-
-    /*
-     * ============================================================
-     * AUTHENTICATED USER
-     * ============================================================
-     */
-    private User getAuthenticatedUser() {
-
-        Authentication authentication =
-                SecurityContextHolder
-                        .getContext()
-                        .getAuthentication();
-
-
-        if (
-                authentication == null ||
-                !authentication.isAuthenticated()
-        ) {
-
-            throw new IllegalStateException(
-                    "User is not authenticated"
-            );
-        }
-
-
-        String username =
-                authentication.getName();
-
-
-        if (
-                username == null ||
-                username.isBlank()
-        ) {
-
-            throw new IllegalStateException(
-                    "Authenticated username is missing"
-            );
-        }
-
-
-        return userRepository
-                .findByUsername(username)
-                .orElseThrow(
-                        () ->
-                                new IllegalStateException(
-                                        "Authenticated user not found"
-                                )
+        Path basePath =
+                Path.of(
+                        properties.getAccounts()
                 );
-    }
 
+        Path directory =
+                basePath.getParent();
 
-    /*
-     * ============================================================
-     * RESPONSE
-     * ============================================================
-     */
-    private JobResponse toResponse(
-            Job job
-    ) {
+        if (directory == null) {
 
-        return new JobResponse(
+            directory =
+                    Path.of(".");
+        }
 
-                job.getJobId(),
+        try {
 
-                job.getMode(),
+            Files.createDirectories(
+                    directory
+            );
 
-                job.getConcurrency(),
+            /*
+             * Sanitasi userId agar tidak bisa
+             * membuat path aneh.
+             */
+            String safeUserId =
+                    userId.replaceAll(
+                            "[^a-zA-Z0-9_-]",
+                            "_"
+                    );
 
-                job.getTimeout(),
+            /*
+             * Timestamp.
+             */
+            String timestamp =
+                    LocalDateTime.now()
+                            .format(
+                                    FILE_DATE_FORMAT
+                            );
 
-                job.getStatus(),
+            /*
+             * UUID agar nama file selalu unik.
+             */
+            String uniqueId =
+                    UUID.randomUUID()
+                            .toString()
+                            .substring(
+                                    0,
+                                    8
+                            );
 
-                job.getProgress(),
+            /*
+             * Contoh:
+             *
+             * user_regis1_20260815_233001_a81f23c4.txt
+             */
+            String fileName =
+                    "user_"
+                            + safeUserId
+                            + "_"
+                            + timestamp
+                            + "_"
+                            + uniqueId
+                            + ".txt";
 
-                job.getMessage(),
+            Path file =
+                    directory.resolve(
+                            fileName
+                    );
 
-                job.getCreatedAt(),
+            /*
+             * Convert account → lines.
+             */
+            List<String> lines =
+                    accounts
+                            .stream()
+                            .map(
+                                    Account::toAccountFileLine
+                            )
+                            .toList();
 
-                job.getStartedAt(),
+            /*
+             * CREATE_NEW sangat penting.
+             *
+             * Kalau file ternyata sudah ada,
+             * Java akan gagal daripada
+             * menimpa file tersebut.
+             */
+            Files.write(
+                    file,
+                    lines,
+                    StandardCharsets.UTF_8,
+                    StandardOpenOption.CREATE_NEW
+            );
 
-                job.getCompletedAt(),
+            System.out.println(
+                    "[ACCOUNT FILE CREATED] "
+                            + file.toAbsolutePath()
+            );
 
-                job.getError()
-        );
+        } catch (Exception e) {
+
+            throw new IllegalStateException(
+                    "Failed to create account file",
+                    e
+            );
+        }
     }
 }

@@ -7,33 +7,78 @@ public class Job {
     private final String jobId;
 
     /**
-     * User yang membuat / menjalankan job.
-     * Digunakan untuk menentukan account file milik user tersebut.
+     * ID user yang membuat job.
+     *
+     * Digunakan untuk menentukan:
+     * - ownership job
+     * - account file milik user
      */
     private final String ownerUserId;
 
+    /**
+     * Mode worker.
+     */
     private final String mode;
 
+    /**
+     * Jumlah worker/concurrency.
+     */
     private final int concurrency;
 
+    /**
+     * Timeout job.
+     *
+     * Satuan mengikuti konfigurasi/request
+     * yang digunakan oleh aplikasi.
+     */
     private final int timeout;
 
+    /**
+     * Status job saat ini.
+     */
     private volatile JobStatus status;
 
+    /**
+     * Progress 0 - 100.
+     */
     private volatile int progress;
 
+    /**
+     * Pesan status job.
+     */
     private volatile String message;
 
+    /**
+     * Error jika job gagal.
+     */
     private volatile String error;
 
+    /**
+     * Waktu job dibuat.
+     */
     private volatile Instant createdAt;
 
+    /**
+     * Waktu worker mulai dijalankan.
+     */
     private volatile Instant startedAt;
 
+    /**
+     * Waktu job selesai.
+     */
     private volatile Instant completedAt;
 
+    /**
+     * Python process yang sedang menjalankan job.
+     */
     private volatile Process process;
 
+
+    /*
+     * =========================================================
+     * CONSTRUCTOR
+     * =========================================================
+     */
 
     public Job(
             String jobId,
@@ -44,27 +89,38 @@ public class Job {
     ) {
 
         this.jobId = jobId;
+
         this.ownerUserId = ownerUserId;
+
         this.mode = mode;
+
         this.concurrency = concurrency;
+
         this.timeout = timeout;
 
         this.status = JobStatus.QUEUED;
+
         this.progress = 0;
+
         this.message = "Job queued";
+
         this.error = null;
 
         this.createdAt = Instant.now();
+
         this.startedAt = null;
+
         this.completedAt = null;
 
         this.process = null;
     }
 
 
-    // =========================================================
-    // JOB ID
-    // =========================================================
+    /*
+     * =========================================================
+     * JOB ID
+     * =========================================================
+     */
 
     public String getJobId() {
 
@@ -72,9 +128,11 @@ public class Job {
     }
 
 
-    // =========================================================
-    // OWNER USER
-    // =========================================================
+    /*
+     * =========================================================
+     * OWNER USER ID
+     * =========================================================
+     */
 
     public String getOwnerUserId() {
 
@@ -82,9 +140,11 @@ public class Job {
     }
 
 
-    // =========================================================
-    // JOB CONFIGURATION
-    // =========================================================
+    /*
+     * =========================================================
+     * MODE
+     * =========================================================
+     */
 
     public String getMode() {
 
@@ -92,11 +152,23 @@ public class Job {
     }
 
 
+    /*
+     * =========================================================
+     * CONCURRENCY
+     * =========================================================
+     */
+
     public int getConcurrency() {
 
         return concurrency;
     }
 
+
+    /*
+     * =========================================================
+     * TIMEOUT
+     * =========================================================
+     */
 
     public int getTimeout() {
 
@@ -104,9 +176,11 @@ public class Job {
     }
 
 
-    // =========================================================
-    // STATUS
-    // =========================================================
+    /*
+     * =========================================================
+     * STATUS
+     * =========================================================
+     */
 
     public JobStatus getStatus() {
 
@@ -122,9 +196,11 @@ public class Job {
     }
 
 
-    // =========================================================
-    // PROGRESS
-    // =========================================================
+    /*
+     * =========================================================
+     * PROGRESS
+     * =========================================================
+     */
 
     public int getProgress() {
 
@@ -135,11 +211,6 @@ public class Job {
     public void setProgress(
             int progress
     ) {
-
-        /*
-         * Jangan biarkan progress keluar
-         * dari range 0 - 100.
-         */
 
         this.progress =
                 Math.max(
@@ -152,9 +223,11 @@ public class Job {
     }
 
 
-    // =========================================================
-    // MESSAGE
-    // =========================================================
+    /*
+     * =========================================================
+     * MESSAGE
+     * =========================================================
+     */
 
     public String getMessage() {
 
@@ -170,9 +243,11 @@ public class Job {
     }
 
 
-    // =========================================================
-    // ERROR
-    // =========================================================
+    /*
+     * =========================================================
+     * ERROR
+     * =========================================================
+     */
 
     public String getError() {
 
@@ -188,9 +263,11 @@ public class Job {
     }
 
 
-    // =========================================================
-    // CREATED AT
-    // =========================================================
+    /*
+     * =========================================================
+     * CREATED AT
+     * =========================================================
+     */
 
     public Instant getCreatedAt() {
 
@@ -206,9 +283,11 @@ public class Job {
     }
 
 
-    // =========================================================
-    // STARTED AT
-    // =========================================================
+    /*
+     * =========================================================
+     * STARTED AT
+     * =========================================================
+     */
 
     public Instant getStartedAt() {
 
@@ -224,9 +303,11 @@ public class Job {
     }
 
 
-    // =========================================================
-    // COMPLETED AT
-    // =========================================================
+    /*
+     * =========================================================
+     * COMPLETED AT
+     * =========================================================
+     */
 
     public Instant getCompletedAt() {
 
@@ -242,9 +323,11 @@ public class Job {
     }
 
 
-    // =========================================================
-    // PROCESS
-    // =========================================================
+    /*
+     * =========================================================
+     * PYTHON PROCESS
+     * =========================================================
+     */
 
     public Process getProcess() {
 

@@ -280,7 +280,7 @@ public class AccountService {
          *
          * /home/vortexis/Registrar/accounts
          */
-        Path basePath =
+        Path directory =
                 Path.of(
                         properties.getAccountsDir()
                 );

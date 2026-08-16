@@ -1,16 +1,17 @@
 package com.example.regis.security;
 
-import org.springframework.beans.factory.annotation.Value;
+import com.nimbusds.jose.jwk.JWKSet;
+import com.nimbusds.jose.jwk.RSAKey;
+import com.nimbusds.jose.jwk.source.JWKSource;
+import com.nimbusds.jose.proc.SecurityContext;
+
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-import org.springframework.security.oauth2.jose.jws.SignatureAlgorithm;
-import org.springframework.security.oauth2.jwt.*;
-
-import com.nimbusds.jose.jwk.RSAKey;
-import com.nimbusds.jose.jwk.JWKSet;
-import com.nimbusds.jose.jwk.source.JWKSource;
-import com.nimbusds.jose.proc.SecurityContext;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtEncoder;
+import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
+import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
@@ -20,21 +21,31 @@ import java.security.interfaces.RSAPublicKey;
 public class JwtConfig {
 
     @Bean
-    public RSAKey rsaKey() throws Exception {
+    public RSAKey rsaKey() {
 
-        KeyPairGenerator generator =
-                KeyPairGenerator.getInstance("RSA");
+        try {
+            KeyPairGenerator generator =
+                    KeyPairGenerator.getInstance("RSA");
 
-        generator.initialize(2048);
+            generator.initialize(2048);
 
-        KeyPair keyPair = generator.generateKeyPair();
+            KeyPair keyPair =
+                    generator.generateKeyPair();
 
-        return new RSAKey.Builder(
-                (RSAPublicKey) keyPair.getPublic()
-        )
-                .privateKey(keyPair.getPrivate())
-                .keyID("regis-key")
-                .build();
+            return new RSAKey.Builder(
+                    (RSAPublicKey) keyPair.getPublic()
+            )
+                    .privateKey(keyPair.getPrivate())
+                    .keyID("regis-key")
+                    .build();
+
+        } catch (Exception e) {
+
+            throw new IllegalStateException(
+                    "Failed to generate RSA key",
+                    e
+            );
+        }
     }
 
     @Bean
@@ -52,8 +63,20 @@ public class JwtConfig {
     @Bean
     public JwtDecoder jwtDecoder(RSAKey rsaKey) {
 
-        return NimbusJwtDecoder
-                .withPublicKey(rsaKey.toRSAPublicKey())
-                .build();
+        try {
+
+            return NimbusJwtDecoder
+                    .withPublicKey(
+                            rsaKey.toRSAPublicKey()
+                    )
+                    .build();
+
+        } catch (Exception e) {
+
+            throw new IllegalStateException(
+                    "Failed to create JWT decoder",
+                    e
+            );
+        }
     }
 }

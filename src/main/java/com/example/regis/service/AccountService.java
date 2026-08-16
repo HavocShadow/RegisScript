@@ -30,9 +30,57 @@ public class AccountService {
      */
 
     private static final Map<String, String> BANK_CODES =
-            Map.of(
-                    "LINKAJA", "63"
-            );
+        Map.ofEntries(
+
+                Map.entry("DANA", "60"),
+                Map.entry("BANK BCA", "37"),
+                Map.entry("BANK BRI", "45"),
+                Map.entry("GOPAY", "59"),
+                Map.entry("BANK MANDIRI", "40"),
+                Map.entry("OVO", "58"),
+                Map.entry("BANK BNI", "38"),
+                Map.entry("LINKAJA", "63"),
+                Map.entry("SHOPEEPAY", "116"),
+                Map.entry("BANK CIMB NIAGA", "57"),
+                Map.entry("SAKUKU", "115"),
+                Map.entry("SEABANK", "120"),
+                Map.entry("ALLO BANK", "124"),
+                Map.entry("BANK ACEH", "126"),
+                Map.entry("BANK ALADIN", "130"),
+                Map.entry("BANK ARTHA GRAHA", "103"),
+                Map.entry("BANK ARTOS", "104"),
+                Map.entry("BANK BCA BLU", "123"),
+                Map.entry("BANK BCA SYARIAH", "47"),
+                Map.entry("BANK BJB", "105"),
+                Map.entry("BANK BUKOPIN", "56"),
+                Map.entry("BANK COMMONWEALTH", "107"),
+                Map.entry("BANK DANAMON", "55"),
+                Map.entry("BANK DBS", "108"),
+                Map.entry("BANK HSBC", "110"),
+                Map.entry("BANK JAGO", "122"),
+                Map.entry("BANK JAKARTA", "109"),
+                Map.entry("BANK JATIM", "111"),
+                Map.entry("BANK MASPION", "42"),
+                Map.entry("BANK MAYBANK", "112"),
+                Map.entry("BANK MEGA", "113"),
+                Map.entry("BANK MEGA SYARIAH", "128"),
+                Map.entry("BANK MESTIKA DHARMA", "132"),
+                Map.entry("BANK MUAMALAT INDONESIA", "51"),
+                Map.entry("BANK NAGARI", "114"),
+                Map.entry("BANK OCBC NISP", "52"),
+                Map.entry("BANK PAN INDONESIA", "46"),
+                Map.entry("BANK PERMATA", "54"),
+                Map.entry("BANK SAQU", "127"),
+                Map.entry("BANK SINARMAS", "43"),
+                Map.entry("BANK SYARIAH INDONESIA", "64"),
+                Map.entry("BANK TABUNGAN NEGARA", "39"),
+                Map.entry("BANK UOB", "53"),
+                Map.entry("HIBANK", "44"),
+                Map.entry("KEB HANA", "129"),
+                Map.entry("NEO BANK", "125"),
+                Map.entry("SMBC", "106"),
+                Map.entry("SUPERBANK", "131")
+        );
 
 
     public AccountService(

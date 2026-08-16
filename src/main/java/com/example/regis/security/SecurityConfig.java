@@ -3,10 +3,11 @@ package com.example.regis.security;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-
 import org.springframework.security.config.http.SessionCreationPolicy;
 
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -29,30 +30,49 @@ public class SecurityConfig {
     ) throws Exception {
 
         http
+
+            // =========================
+            // CORS
+            // =========================
+            .cors(cors -> {})
+
+            // =========================
+            // CSRF
+            // =========================
             .csrf(csrf -> csrf.disable())
 
+            // =========================
+            // STATELESS JWT
+            // =========================
             .sessionManagement(session ->
                 session.sessionCreationPolicy(
                     SessionCreationPolicy.STATELESS
                 )
             )
 
+            // =========================
+            // AUTHORIZATION
+            // =========================
             .authorizeHttpRequests(auth -> auth
 
-                // Public
+                // Public endpoints
                 .requestMatchers(
-                    "/api/v1/auth/login"
+                    "/api/v1/auth/login",
+                    "/api/v1/auth/register"
                 ).permitAll()
 
-                // Admin only
+                // Admin endpoints
                 .requestMatchers(
                     "/api/v1/admin/**"
                 ).hasRole("ADMIN")
 
-                // Everything else
+                // Everything else requires JWT
                 .anyRequest().authenticated()
             )
 
+            // =========================
+            // JWT RESOURCE SERVER
+            // =========================
             .oauth2ResourceServer(oauth ->
                 oauth.jwt(jwt -> {})
             );
@@ -60,9 +80,13 @@ public class SecurityConfig {
         return http.build();
     }
 
+    // =========================
+    // AUTHENTICATION MANAGER
+    // =========================
+
     @Bean
     public AuthenticationManager authenticationManager(
-            org.springframework.security.authentication.AuthenticationConfiguration configuration
+            AuthenticationConfiguration configuration
     ) throws Exception {
 
         return configuration.getAuthenticationManager();

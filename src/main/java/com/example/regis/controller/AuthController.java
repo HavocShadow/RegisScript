@@ -1,72 +1,103 @@
 package com.example.regis.controller;
 
 import com.example.regis.dto.LoginRequest;
-import com.example.regis.dto.LoginResponse;
+import com.example.regis.dto.RegisterRequest;
 import com.example.regis.model.User;
-import com.example.regis.repository.UserRepository;
-import com.example.regis.security.JwtService;
+import com.example.regis.service.AuthService;
 
 import jakarta.validation.Valid;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
-import org.springframework.security.authentication.*;
-import org.springframework.security.core.Authentication;
-
 import org.springframework.web.bind.annotation.*;
+
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/auth")
 public class AuthController {
 
-    private final AuthenticationManager authenticationManager;
-    private final UserRepository userRepository;
-    private final JwtService jwtService;
+    private final AuthService authService;
 
-    public AuthController(
-            AuthenticationManager authenticationManager,
-            UserRepository userRepository,
-            JwtService jwtService
-    ) {
-        this.authenticationManager = authenticationManager;
-        this.userRepository = userRepository;
-        this.jwtService = jwtService;
+    public AuthController(AuthService authService) {
+        this.authService = authService;
     }
 
+    // =========================
+    // REGISTER
+    // =========================
+
+    @PostMapping("/register")
+    public ResponseEntity<?> register(
+            @Valid @RequestBody RegisterRequest request
+    ) {
+
+        try {
+
+            User user = authService.register(request);
+
+            return ResponseEntity
+                    .status(HttpStatus.CREATED)
+                    .body(
+                            Map.of(
+                                    "success", true,
+                                    "message", "Registration successful",
+                                    "user", Map.of(
+                                            "id", user.getId(),
+                                            "username", user.getUsername(),
+                                            "email", user.getEmail()
+                                    )
+                            )
+                    );
+
+        } catch (IllegalArgumentException e) {
+
+            return ResponseEntity
+                    .status(HttpStatus.CONFLICT)
+                    .body(
+                            Map.of(
+                                    "success", false,
+                                    "message", e.getMessage()
+                            )
+                    );
+        }
+    }
+
+    // =========================
+    // LOGIN
+    // =========================
+
     @PostMapping("/login")
-    public ResponseEntity<LoginResponse> login(
+    public ResponseEntity<?> login(
             @Valid @RequestBody LoginRequest request
     ) {
 
-        Authentication authentication =
-                authenticationManager.authenticate(
-                        new UsernamePasswordAuthenticationToken(
-                                request.username(),
-                                request.password()
-                        )
-                );
+        try {
 
-        User user =
-                userRepository
-                        .findByUsername(request.username())
-                        .orElseThrow();
+            String accessToken =
+                    authService.login(request);
 
-        String token =
-                jwtService.generateToken(
-                        user.getUsername(),
-                        user.getRole()
-                );
+            return ResponseEntity.ok(
+                    Map.of(
+                            "success", true,
+                            "message", "Login successful",
+                            "accessToken", accessToken,
+                            "tokenType", "Bearer"
+                    )
+            );
 
-        return ResponseEntity.ok(
-                new LoginResponse(
-                        token,
-                        "Bearer",
-                        900,
-                        new LoginResponse.UserInfo(
-                                user.getUsername(),
-                                user.getRole()
-                        )
-                )
-        );
+        } catch (Exception e) {
+
+            return ResponseEntity
+                    .status(HttpStatus.UNAUTHORIZED)
+                    .body(
+                            Map.of(
+                                    "success", false,
+                                    "message",
+                                    "Invalid username or password"
+                            )
+                    );
+        }
     }
 }

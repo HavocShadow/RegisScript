@@ -14,7 +14,9 @@ import org.springframework.stereotype.Service;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+
 import java.time.Instant;
+
 import java.util.Comparator;
 import java.util.Map;
 import java.util.Set;
@@ -33,10 +35,8 @@ public class JobService {
 
     private final AccountFileService accountFileService;
 
-
     private final Map<String, Job> jobs =
             new ConcurrentHashMap<>();
-
 
     public JobService(
             WorkerProperties properties,
@@ -45,19 +45,15 @@ public class JobService {
             AccountFileService accountFileService
     ) {
 
-        this.properties =
-                properties;
+        this.properties = properties;
 
-        this.worker =
-                worker;
+        this.worker = worker;
 
-        this.userRepository =
-                userRepository;
+        this.userRepository = userRepository;
 
         this.accountFileService =
                 accountFileService;
     }
-
 
     // ============================================================
     // CREATE JOB
@@ -74,14 +70,8 @@ public class JobService {
             );
         }
 
-
         User user =
                 getAuthenticatedUser();
-
-
-        // ========================================================
-        // MODE
-        // ========================================================
 
         String mode =
                 request.mode() == null ||
@@ -92,7 +82,6 @@ public class JobService {
                         : request.mode()
                                 .trim()
                                 .toLowerCase();
-
 
         if (
                 !Set.of(
@@ -108,18 +97,19 @@ public class JobService {
             );
         }
 
-
-        // ========================================================
-        // CONCURRENCY
-        // ========================================================
-
         int concurrency =
                 request.concurrency() == null
-
                         ? 10
-
                         : request.concurrency();
 
+        int timeout =
+                request.timeout() == null
+                        ? 15
+                        : request.timeout();
+
+        // ========================================================
+        // CONCURRENCY VALIDATION
+        // ========================================================
 
         if (concurrency < 1) {
 
@@ -127,7 +117,6 @@ public class JobService {
                     "Concurrency must be at least 1"
             );
         }
-
 
         if (
                 concurrency >
@@ -140,18 +129,9 @@ public class JobService {
             );
         }
 
-
         // ========================================================
-        // TIMEOUT
+        // TIMEOUT VALIDATION
         // ========================================================
-
-        int timeout =
-                request.timeout() == null
-
-                        ? 15
-
-                        : request.timeout();
-
 
         if (timeout < 1) {
 
@@ -159,7 +139,6 @@ public class JobService {
                     "Timeout must be at least 1 minute"
             );
         }
-
 
         if (
                 timeout >
@@ -173,47 +152,28 @@ public class JobService {
             );
         }
 
-
         // ========================================================
         // OWNER
         // ========================================================
 
         String ownerUserId =
-                user.getId()
-                        .toString();
+                user.getId().toString();
 
+        String username =
+                user.getUsername();
 
         // ========================================================
-        // ACCOUNT FILE SNAPSHOT
+        // FIND ACCOUNT FILE
         // ========================================================
-        //
-        // Ambil file ACCOUNT TERBARU milik user.
-        //
-        // File ini kemudian disimpan langsung
-        // ke dalam Job.
-        //
-        // Worker TIDAK akan mencari file lagi
-        // berdasarkan userId.
-        //
 
         Path accountFile =
                 accountFileService
                         .getLatestAccountFile(
-                                ownerUserId
+                                username
                         );
 
-
         if (
-                accountFile == null
-        ) {
-
-            throw new IllegalStateException(
-                    "No account file found for user"
-            );
-        }
-
-
-        if (
+                accountFile == null ||
                 !Files.exists(accountFile)
         ) {
 
@@ -222,7 +182,6 @@ public class JobService {
                             + accountFile
             );
         }
-
 
         if (
                 !Files.isRegularFile(accountFile)
@@ -234,94 +193,44 @@ public class JobService {
             );
         }
 
-
-        try {
-
-            if (
-                    Files.size(accountFile) == 0
-            ) {
-
-                throw new IllegalStateException(
-                        "Account file is empty: "
-                                + accountFile
-                );
-            }
-
-        } catch (
-                java.io.IOException e
-        ) {
-
-            throw new IllegalStateException(
-                    "Failed to inspect account file: "
-                            + accountFile,
-                    e
-            );
-        }
-
-
         // ========================================================
-        // ABSOLUTE PATH
-        // ========================================================
-
-        String accountFilePath =
-                accountFile
-                        .toAbsolutePath()
-                        .normalize()
-                        .toString();
-
-
-        // ========================================================
-        // JOB ID
+        // CREATE JOB
         // ========================================================
 
         String jobId =
                 UUID.randomUUID()
                         .toString();
 
-
-        // ========================================================
-        // CREATE JOB
-        // ========================================================
-
         Job job =
                 new Job(
                         jobId,
                         ownerUserId,
-                        accountFilePath,
+                        accountFile
+                                .toAbsolutePath()
+                                .normalize()
+                                .toString(),
                         mode,
                         concurrency,
                         timeout
                 );
-
-
-        // ========================================================
-        // STORE JOB
-        // ========================================================
 
         jobs.put(
                 jobId,
                 job
         );
 
-
         // ========================================================
-        // START PYTHON WORKER
+        // START WORKER
         // ========================================================
 
         worker.execute(
                 job
         );
 
-
-        // ========================================================
-        // RESPONSE
-        // ========================================================
-
-        return toResponse(
-                job
+        return get(
+                jobId
         );
     }
-
 
     // ============================================================
     // GET
@@ -336,12 +245,10 @@ public class JobService {
                         jobId
                 );
 
-
         return toResponse(
                 job
         );
     }
-
 
     // ============================================================
     // CURRENT
@@ -352,11 +259,8 @@ public class JobService {
         User user =
                 getAuthenticatedUser();
 
-
         String ownerUserId =
-                user.getId()
-                        .toString();
-
+                user.getId().toString();
 
         return jobs.values()
                 .stream()
@@ -385,7 +289,6 @@ public class JobService {
                 );
     }
 
-
     // ============================================================
     // CANCEL CURRENT
     // ============================================================
@@ -397,11 +300,8 @@ public class JobService {
         User user =
                 getAuthenticatedUser();
 
-
         String ownerUserId =
-                user.getId()
-                        .toString();
-
+                user.getId().toString();
 
         Job job =
                 jobs.values()
@@ -410,7 +310,9 @@ public class JobService {
                         .filter(
                                 item ->
                                         item.getOwnerUserId()
-                                                .equals(ownerUserId)
+                                                .equals(
+                                                        ownerUserId
+                                                )
                         )
 
                         .max(
@@ -426,13 +328,11 @@ public class JobService {
                                         )
                         );
 
-
         cancelJob(
                 job,
                 reason
         );
     }
-
 
     // ============================================================
     // CANCEL
@@ -447,13 +347,11 @@ public class JobService {
                         jobId
                 );
 
-
         cancelJob(
                 job,
                 "Cancelled by user"
         );
     }
-
 
     // ============================================================
     // INTERNAL CANCEL
@@ -467,21 +365,17 @@ public class JobService {
         JobStatus status =
                 job.getStatus();
 
-
         if (
                 status == JobStatus.COMPLETED ||
                 status == JobStatus.FAILED ||
                 status == JobStatus.CANCELLED
         ) {
-
             return;
         }
-
 
         job.setStatus(
                 JobStatus.CANCELLED
         );
-
 
         job.setMessage(
                 reason == null ||
@@ -492,10 +386,8 @@ public class JobService {
                         : reason
         );
 
-
         Process process =
                 job.getProcess();
-
 
         if (
                 process != null &&
@@ -503,7 +395,6 @@ public class JobService {
         ) {
 
             process.destroy();
-
 
             try {
 
@@ -528,12 +419,10 @@ public class JobService {
             }
         }
 
-
         job.setCompletedAt(
                 Instant.now()
         );
     }
-
 
     // ============================================================
     // REQUIRE OWNED JOB
@@ -546,7 +435,6 @@ public class JobService {
         Job job =
                 jobs.get(jobId);
 
-
         if (job == null) {
 
             throw new IllegalArgumentException(
@@ -554,15 +442,11 @@ public class JobService {
             );
         }
 
-
         User user =
                 getAuthenticatedUser();
 
-
         String ownerUserId =
-                user.getId()
-                        .toString();
-
+                user.getId().toString();
 
         if (
                 !job.getOwnerUserId()
@@ -574,10 +458,8 @@ public class JobService {
             );
         }
 
-
         return job;
     }
-
 
     // ============================================================
     // AUTHENTICATED USER
@@ -590,7 +472,6 @@ public class JobService {
                         .getContext()
                         .getAuthentication();
 
-
         if (
                 authentication == null ||
                 !authentication.isAuthenticated()
@@ -601,10 +482,8 @@ public class JobService {
             );
         }
 
-
         String username =
                 authentication.getName();
-
 
         if (
                 username == null ||
@@ -616,7 +495,6 @@ public class JobService {
             );
         }
 
-
         return userRepository
                 .findByUsername(username)
                 .orElseThrow(
@@ -627,7 +505,6 @@ public class JobService {
                 );
     }
 
-
     // ============================================================
     // RESPONSE
     // ============================================================
@@ -637,27 +514,16 @@ public class JobService {
     ) {
 
         return new JobResponse(
-
                 job.getJobId(),
-
                 job.getMode(),
-
                 job.getConcurrency(),
-
                 job.getTimeout(),
-
                 job.getStatus(),
-
                 job.getProgress(),
-
                 job.getMessage(),
-
                 job.getCreatedAt(),
-
                 job.getStartedAt(),
-
                 job.getCompletedAt(),
-
                 job.getError()
         );
     }

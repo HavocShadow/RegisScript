@@ -25,19 +25,11 @@ public class PythonWorkerService {
 
     private final WorkerProperties properties;
 
-
     public PythonWorkerService(
             WorkerProperties properties
     ) {
-
-        this.properties =
-                properties;
+        this.properties = properties;
     }
-
-
-    // ============================================================
-    // EXECUTE
-    // ============================================================
 
     @Async("workerExecutor")
     public void execute(
@@ -48,43 +40,26 @@ public class PythonWorkerService {
                 JobStatus.RUNNING
         );
 
-
         job.setStartedAt(
                 Instant.now()
         );
-
 
         job.setMessage(
                 "Starting Python worker"
         );
 
-
         job.setProgress(
                 0
         );
 
-
-        /*
-         * ========================================================
-         * ACCOUNT FILE
-         * ========================================================
-         *
-         * PENTING:
-         *
-         * Jangan lagi mencari berdasarkan userId.
-         *
-         * Job sudah menyimpan file yang harus digunakan.
-         */
+        // ========================================================
+        // ACCOUNT FILE FROM JOB
+        // ========================================================
 
         Path accountFile =
                 Path.of(
                         job.getAccountFile()
                 );
-
-
-        /*
-         * Pastikan file masih ada.
-         */
 
         if (
                 !Files.exists(accountFile)
@@ -100,11 +75,6 @@ public class PythonWorkerService {
             return;
         }
 
-
-        /*
-         * Pastikan benar-benar regular file.
-         */
-
         if (
                 !Files.isRegularFile(accountFile)
         ) {
@@ -118,11 +88,6 @@ public class PythonWorkerService {
 
             return;
         }
-
-
-        /*
-         * Pastikan file tidak kosong.
-         */
 
         try {
 
@@ -140,7 +105,9 @@ public class PythonWorkerService {
                 return;
             }
 
-        } catch (Exception e) {
+        } catch (
+                Exception e
+        ) {
 
             failJob(
                     job,
@@ -151,66 +118,51 @@ public class PythonWorkerService {
             return;
         }
 
-
-        /*
-         * ========================================================
-         * COMMAND
-         * ========================================================
-         */
+        // ========================================================
+        // COMMAND
+        // ========================================================
 
         List<String> command =
                 new ArrayList<>();
-
 
         command.add(
                 properties.getPython()
         );
 
-
         command.add(
                 properties.getScript()
         );
-
 
         command.add(
                 "--links"
         );
 
-
         command.add(
                 properties.getLinks()
         );
-
 
         command.add(
                 "--accounts"
         );
 
-
-        /*
-         * FILE YANG SUDAH DI-SNAPSHOT OLEH JOB.
-         */
-
         command.add(
-                accountFile.toAbsolutePath()
+                accountFile
+                        .toAbsolutePath()
+                        .normalize()
                         .toString()
         );
-
 
         command.add(
                 "--mode"
         );
 
-
         command.add(
                 job.getMode()
         );
 
-
         command.add(
                 "--concurrency"
         );
-
 
         command.add(
                 String.valueOf(
@@ -218,11 +170,9 @@ public class PythonWorkerService {
                 )
         );
 
-
         command.add(
                 "--timeout"
         );
-
 
         command.add(
                 String.valueOf(
@@ -230,35 +180,20 @@ public class PythonWorkerService {
                 )
         );
 
-
         Process process =
                 null;
 
-
         try {
-
-            /*
-             * ====================================================
-             * PROCESS BUILDER
-             * ====================================================
-             */
 
             ProcessBuilder processBuilder =
                     new ProcessBuilder(
                             command
                     );
 
-
-            /*
-             * Working directory berdasarkan
-             * lokasi script Python.
-             */
-
             Path scriptPath =
                     Path.of(
                             properties.getScript()
                     );
-
 
             if (
                     scriptPath.getParent() != null
@@ -271,45 +206,23 @@ public class PythonWorkerService {
                 );
             }
 
-
-            /*
-             * Gabungkan stdout + stderr.
-             */
-
             processBuilder.redirectErrorStream(
                     true
             );
 
-
-            /*
-             * ====================================================
-             * START
-             * ====================================================
-             */
-
             process =
                     processBuilder.start();
-
 
             job.setProcess(
                     process
             );
 
-
             job.setMessage(
                     "Python worker started"
             );
 
-
-            /*
-             * ====================================================
-             * OUTPUT READER
-             * ====================================================
-             */
-
             Process finalProcess =
                     process;
-
 
             Thread outputReader =
                     new Thread(
@@ -317,29 +230,23 @@ public class PythonWorkerService {
                                     readOutput(
                                             finalProcess,
                                             job
-                                    )
+                                    ),
+                            "python-output-"
+                                    + job.getJobId()
                     );
-
 
             outputReader.setDaemon(
                     true
             );
 
-
             outputReader.start();
 
-
-            /*
-             * ====================================================
-             * TIMEOUT
-             * ====================================================
-             *
-             * Job timeout = minutes.
-             */
+            // ====================================================
+            // TIMEOUT
+            // ====================================================
 
             long timeoutSeconds =
                     job.getTimeout() * 60L;
-
 
             boolean finished =
                     process.waitFor(
@@ -347,17 +254,13 @@ public class PythonWorkerService {
                             TimeUnit.SECONDS
                     );
 
-
-            /*
-             * ====================================================
-             * TIMEOUT
-             * ====================================================
-             */
+            // ====================================================
+            // TIMEOUT
+            // ====================================================
 
             if (!finished) {
 
                 process.destroy();
-
 
                 if (
                         !process.waitFor(
@@ -368,7 +271,6 @@ public class PythonWorkerService {
 
                     process.destroyForcibly();
                 }
-
 
                 if (
                         job.getStatus()
@@ -384,14 +286,12 @@ public class PythonWorkerService {
                     );
                 }
 
-
                 return;
             }
 
-
-            /*
-             * Tunggu output reader.
-             */
+            // ====================================================
+            // OUTPUT READER
+            // ====================================================
 
             try {
 
@@ -407,11 +307,6 @@ public class PythonWorkerService {
                         .interrupt();
             }
 
-
-            /*
-             * Jangan overwrite CANCELLED.
-             */
-
             if (
                     job.getStatus()
                             == JobStatus.CANCELLED
@@ -420,16 +315,12 @@ public class PythonWorkerService {
                 return;
             }
 
-
             int exitCode =
                     process.exitValue();
 
-
-            /*
-             * ====================================================
-             * SUCCESS
-             * ====================================================
-             */
+            // ====================================================
+            // SUCCESS
+            // ====================================================
 
             if (
                     exitCode == 0
@@ -439,36 +330,24 @@ public class PythonWorkerService {
                         100
                 );
 
-
                 job.setStatus(
                         JobStatus.COMPLETED
                 );
 
-
                 job.setMessage(
                         "Python worker completed"
                 );
-            }
 
-
-            /*
-             * ====================================================
-             * FAILED
-             * ====================================================
-             */
-
-            else {
+            } else {
 
                 job.setStatus(
                         JobStatus.FAILED
                 );
 
-
                 job.setMessage(
                         "Python exited with code "
                                 + exitCode
                 );
-
 
                 if (
                         job.getError() == null ||
@@ -481,7 +360,6 @@ public class PythonWorkerService {
                     );
                 }
             }
-
 
         } catch (
                 Exception e
@@ -499,20 +377,17 @@ public class PythonWorkerService {
                 );
             }
 
-
         } finally {
 
             job.setCompletedAt(
                     Instant.now()
             );
 
-
             job.setProcess(
                     null
             );
         }
     }
-
 
     // ============================================================
     // READ OUTPUT
@@ -534,7 +409,6 @@ public class PythonWorkerService {
 
             String line;
 
-
             while (
                     (
                             line =
@@ -549,12 +423,10 @@ public class PythonWorkerService {
                                 + line
                 );
 
-
                 parseProgress(
                         job,
                         line
                 );
-
 
                 if (
                         line.startsWith(
@@ -569,7 +441,6 @@ public class PythonWorkerService {
                     );
                 }
             }
-
 
         } catch (
                 Exception e
@@ -586,7 +457,6 @@ public class PythonWorkerService {
             }
         }
     }
-
 
     // ============================================================
     // PROGRESS
@@ -613,7 +483,6 @@ public class PythonWorkerService {
                                 ).trim()
                         );
 
-
                 job.setProgress(
                         progress
                 );
@@ -621,11 +490,8 @@ public class PythonWorkerService {
             } catch (
                     NumberFormatException ignored
             ) {
-
-                // Ignore invalid progress.
             }
         }
-
 
         if (
                 line.startsWith(
@@ -642,7 +508,6 @@ public class PythonWorkerService {
         }
     }
 
-
     // ============================================================
     // FAIL JOB
     // ============================================================
@@ -657,11 +522,9 @@ public class PythonWorkerService {
                 JobStatus.FAILED
         );
 
-
         job.setMessage(
                 message
         );
-
 
         job.setError(
                 error == null
@@ -669,11 +532,9 @@ public class PythonWorkerService {
                         : error
         );
 
-
         job.setCompletedAt(
                 Instant.now()
         );
-
 
         job.setProcess(
                 null

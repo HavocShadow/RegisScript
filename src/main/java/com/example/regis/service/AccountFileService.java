@@ -8,128 +8,109 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 import java.util.Comparator;
+import java.util.stream.Stream;
 
 @Service
 public class AccountFileService {
 
     private final WorkerProperties properties;
 
-
     public AccountFileService(
             WorkerProperties properties
     ) {
-
-        this.properties =
-                properties;
+        this.properties = properties;
     }
-
 
     /*
      * ============================================================
      * GET LATEST ACCOUNT FILE
      * ============================================================
      *
-     * Digunakan HANYA saat Job dibuat.
+     * Mencari berdasarkan USERNAME.
      *
-     * Setelah Job dibuat, hasil Path ini disimpan
-     * ke dalam object Job.
+     * Contoh:
+     *
+     * username = toniva00238
+     *
+     * akan mencari:
+     *
+     * user_toniva00238_*.txt
      */
-
     public Path getLatestAccountFile(
-            String userId
+            String username
     ) {
 
         if (
-                userId == null ||
-                userId.isBlank()
+                username == null ||
+                username.isBlank()
         ) {
-
             throw new IllegalArgumentException(
-                    "User ID cannot be empty"
+                    "Username cannot be empty"
             );
         }
 
-
-        String safeUserId =
-                userId.replaceAll(
-                        "[^a-zA-Z0-9_-]",
-                        "_"
-                );
-
-
         String accountsDir =
-                properties.getAccountsDir();
-
+                properties.getAccounts();
 
         if (
                 accountsDir == null ||
                 accountsDir.isBlank()
         ) {
-
             throw new IllegalStateException(
-                    "worker.accounts-dir is not configured"
+                    "worker.accounts is not configured"
             );
         }
-
 
         Path directory =
                 Path.of(accountsDir);
 
-
-        if (
-                !Files.exists(directory)
-        ) {
+        if (!Files.exists(directory)) {
 
             throw new IllegalStateException(
-                    "Accounts directory does not exist: "
+                    "Account directory does not exist: "
                             + directory
             );
         }
 
-
-        if (
-                !Files.isDirectory(directory)
-        ) {
+        if (!Files.isDirectory(directory)) {
 
             throw new IllegalStateException(
-                    "Accounts path is not a directory: "
+                    "Account path is not a directory: "
                             + directory
             );
         }
 
+        String safeUsername =
+                username.replaceAll(
+                        "[^a-zA-Z0-9_-]",
+                        "_"
+                );
 
-        try {
+        String prefix =
+                "user_"
+                        + safeUsername
+                        + "_";
 
-            return Files.list(directory)
+        try (
+                Stream<Path> files =
+                        Files.list(directory)
+        ) {
 
-                    /*
-                     * Hanya file biasa.
-                     */
+            return files
+
                     .filter(
                             Files::isRegularFile
                     )
 
-                    /*
-                     * Hanya file milik user.
-                     *
-                     * Contoh:
-                     *
-                     * user_1_20260816_020001_a81f23c4.txt
-                     */
                     .filter(
                             path ->
                                     path.getFileName()
                                             .toString()
                                             .startsWith(
-                                                    "user_"
-                                                            + safeUserId
-                                                            + "_"
+                                                    prefix
                                             )
                     )
 
-                    /*
-                     * Hanya TXT.
-                     */
                     .filter(
                             path ->
                                     path.getFileName()
@@ -139,12 +120,22 @@ public class AccountFileService {
                                             )
                     )
 
-                    /*
-                     * File terbaru.
-                     */
                     .max(
                             Comparator.comparing(
-                                    this::lastModified
+                                    path -> {
+                                        try {
+
+                                            return Files
+                                                    .getLastModifiedTime(
+                                                            path
+                                                    )
+                                                    .toMillis();
+
+                                        } catch (Exception e) {
+
+                                            return 0L;
+                                        }
+                                    }
                             )
                     )
 
@@ -152,7 +143,7 @@ public class AccountFileService {
                             () ->
                                     new IllegalStateException(
                                             "No account file found for user: "
-                                                    + userId
+                                                    + username
                                     )
                     );
 
@@ -168,33 +159,8 @@ public class AccountFileService {
 
             throw new IllegalStateException(
                     "Failed to find account file for user: "
-                            + userId,
+                            + username,
                     e
-            );
-        }
-    }
-
-
-    /*
-     * ============================================================
-     * LAST MODIFIED
-     * ============================================================
-     */
-
-    private java.nio.file.attribute.FileTime lastModified(
-            Path path
-    ) {
-
-        try {
-
-            return Files.getLastModifiedTime(
-                    path
-            );
-
-        } catch (Exception e) {
-
-            return java.nio.file.attribute.FileTime.fromMillis(
-                    0
             );
         }
     }

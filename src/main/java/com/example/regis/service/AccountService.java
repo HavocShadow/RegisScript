@@ -87,21 +87,13 @@ public class AccountService {
         this.properties = properties;
     }
 
-    /*
-     * ============================================================
-     * SINGLE ACCOUNT
-     * ============================================================
-     */
-
     public AccountResponse add(
             AccountRequest request
     ) {
 
-        Account account =
-                createAccount(request);
+        Account account = createAccount(request);
 
-        Path file =
-                saveAccount(account);
+        saveAccount(account);
 
         return new AccountResponse(
                 account.getUserId(),
@@ -113,12 +105,6 @@ public class AccountService {
         );
     }
 
-    /*
-     * ============================================================
-     * BULK ACCOUNT
-     * ============================================================
-     */
-
     public List<AccountResponse> addBulk(
             BulkAccountRequest request
     ) {
@@ -128,7 +114,6 @@ public class AccountService {
                 request.accounts() == null ||
                 request.accounts().isEmpty()
         ) {
-
             throw new IllegalArgumentException(
                     "Account list cannot be empty"
             );
@@ -141,7 +126,6 @@ public class AccountService {
                 AccountRequest item :
                 request.accounts()
         ) {
-
             accounts.add(
                     createAccount(item)
             );
@@ -165,20 +149,58 @@ public class AccountService {
                 .toList();
     }
 
-    /*
-     * ============================================================
-     * CREATE ACCOUNT
-     * ============================================================
-     */
-
     private Account createAccount(
             AccountRequest request
     ) {
 
         if (request == null) {
-
             throw new IllegalArgumentException(
                     "Account request cannot be null"
+            );
+        }
+
+        if (
+                request.userId() == null ||
+                request.userId().isBlank()
+        ) {
+            throw new IllegalArgumentException(
+                    "User ID cannot be empty"
+            );
+        }
+
+        if (
+                request.password() == null ||
+                request.password().isBlank()
+        ) {
+            throw new IllegalArgumentException(
+                    "Password cannot be empty"
+            );
+        }
+
+        if (
+                request.fullName() == null ||
+                request.fullName().isBlank()
+        ) {
+            throw new IllegalArgumentException(
+                    "Full name cannot be empty"
+            );
+        }
+
+        if (
+                request.bankType() == null ||
+                request.bankType().isBlank()
+        ) {
+            throw new IllegalArgumentException(
+                    "Bank type cannot be empty"
+            );
+        }
+
+        if (
+                request.accountNumber() == null ||
+                request.accountNumber().isBlank()
+        ) {
+            throw new IllegalArgumentException(
+                    "Account number cannot be empty"
             );
         }
 
@@ -191,7 +213,6 @@ public class AccountService {
                 BANK_CODES.get(bankType);
 
         if (bankCode == null) {
-
             throw new IllegalArgumentException(
                     "Unsupported bank type: "
                             + bankType
@@ -208,12 +229,6 @@ public class AccountService {
         );
     }
 
-    /*
-     * ============================================================
-     * SAVE SINGLE
-     * ============================================================
-     */
-
     private Path saveAccount(
             Account account
     ) {
@@ -223,19 +238,6 @@ public class AccountService {
         );
     }
 
-    /*
-     * ============================================================
-     * SAVE ACCOUNTS
-     * ============================================================
-     *
-     * Return:
-     *
-     * Path file yang BARU dibuat.
-     *
-     * Ini penting agar sistem mengetahui
-     * file mana yang dibuat oleh import ini.
-     */
-
     private synchronized Path saveAccounts(
             List<Account> accounts
     ) {
@@ -244,7 +246,6 @@ public class AccountService {
                 accounts == null ||
                 accounts.isEmpty()
         ) {
-
             throw new IllegalArgumentException(
                     "Account list cannot be empty"
             );
@@ -254,11 +255,6 @@ public class AccountService {
                 accounts.get(0)
                         .getUserId()
                         .trim();
-
-        /*
-         * Semua account dalam satu bulk
-         * harus milik user yang sama.
-         */
 
         for (
                 Account account :
@@ -270,7 +266,6 @@ public class AccountService {
                             account.getUserId().trim()
                     )
             ) {
-
                 throw new IllegalArgumentException(
                         "All accounts in one import "
                                 + "must belong to the same user"
@@ -278,22 +273,15 @@ public class AccountService {
             }
         }
 
-        /*
-         * ========================================================
-         * ACCOUNT DIRECTORY
-         * ========================================================
-         */
-
         String accountsDir =
-                properties.getAccountsDir();
+                properties.getAccounts();
 
         if (
                 accountsDir == null ||
                 accountsDir.isBlank()
         ) {
-
             throw new IllegalStateException(
-                    "worker.accounts-dir is not configured"
+                    "worker.accounts is not configured"
             );
         }
 
@@ -306,35 +294,17 @@ public class AccountService {
                     directory
             );
 
-            /*
-             * ====================================================
-             * SANITIZE USER ID
-             * ====================================================
-             */
-
             String safeUserId =
                     userId.replaceAll(
                             "[^a-zA-Z0-9_-]",
                             "_"
                     );
 
-            /*
-             * ====================================================
-             * TIMESTAMP
-             * ====================================================
-             */
-
             String timestamp =
                     LocalDateTime.now()
                             .format(
                                     FILE_DATE_FORMAT
                             );
-
-            /*
-             * ====================================================
-             * UNIQUE ID
-             * ====================================================
-             */
 
             String uniqueId =
                     UUID.randomUUID()
@@ -343,14 +313,6 @@ public class AccountService {
                                     0,
                                     8
                             );
-
-            /*
-             * ====================================================
-             * FILE NAME
-             * ====================================================
-             *
-             * user_1_20260816_020501_a81f23c4.txt
-             */
 
             String fileName =
                     "user_"
@@ -366,12 +328,6 @@ public class AccountService {
                             fileName
                     );
 
-            /*
-             * ====================================================
-             * ACCOUNT → FILE LINES
-             * ====================================================
-             */
-
             List<String> lines =
                     accounts
                             .stream()
@@ -379,12 +335,6 @@ public class AccountService {
                                     Account::toAccountFileLine
                             )
                             .toList();
-
-            /*
-             * ====================================================
-             * CREATE NEW
-             * ====================================================
-             */
 
             Files.write(
                     file,
@@ -397,12 +347,6 @@ public class AccountService {
                     "[ACCOUNT FILE CREATED] "
                             + file.toAbsolutePath()
             );
-
-            /*
-             * PENTING:
-             *
-             * Kembalikan file yang benar-benar dibuat.
-             */
 
             return file;
 
